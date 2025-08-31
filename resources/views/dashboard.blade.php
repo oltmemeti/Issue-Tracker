@@ -87,6 +87,16 @@
                     <option value="high">High</option>
                 </select>
 
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Assign To</label>
+                <select name="user_id" class="w-full border rounded-md p-2">
+                    <option value="">-- Select User --</option>
+                    @foreach($users as $user)
+                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+
                 <label class="block text-sm font-medium text-gray-700">Status</label>
                 <select name="status" class="w-full border rounded-md p-2 mb-4">
                     <option value="new" selected>New</option>
@@ -107,29 +117,62 @@
             </form>
         </div>
     </div>
+{{-- ================= Create Story Modal ================= --}}
+<div x-cloak x-show="openStoryModal" x-transition class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-md p-6 relative">
+        <button @click="openStoryModal=false" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700">✖</button>
+        <h2 class="text-lg font-semibold mb-4">Create Story</h2>
 
-    {{-- ================= Create Story Modal ================= --}}
-    <div x-cloak x-show="openStoryModal" x-transition class="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-lg w-full max-w-md p-6 relative">
-            <button @click="openStoryModal=false" class="absolute top-3 right-3 text-gray-500 hover:text-gray-700">✖</button>
-            <h2 class="text-lg font-semibold mb-4">Create Story</h2>
-            <form method="POST" action="{{ route('stories.store') }}" class="space-y-4">
-                @csrf
-                <div>
-                    <label class="block text-sm font-medium">Title</label>
-                    <input name="title" class="w-full mt-1 border rounded-md p-2" required />
-                </div>
-                <div>
-                    <label class="block text-sm font-medium">Description</label>
-                    <textarea name="description" class="w-full mt-1 border rounded-md p-2"></textarea>
-                </div>
-                <div class="flex justify-end space-x-2">
-                    <button type="button" @click="openStoryModal=false" class="px-4 py-2 bg-gray-200 rounded-md">Cancel</button>
-                    <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md">Create</button>
-                </div>
-            </form>
-        </div>
+        <form method="POST" action="{{ route('stories.store') }}" class="space-y-4">
+            @csrf
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Title</label>
+                <input name="title" class="w-full mt-1 border rounded-md p-2" required />
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Description</label>
+                <textarea name="description" class="w-full mt-1 border rounded-md p-2"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Assign To</label>
+                <select name="user_id" class="w-full border rounded-md p-2">
+                    <option value="">-- Select User --</option>
+                    @foreach($users as $user)
+                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                    @endforeach
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Priority</label>
+                <select name="priority" class="w-full border rounded-md p-2">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Status</label>
+                <select name="status" class="w-full border rounded-md p-2">
+                    <option value="new" selected>New</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="blocked">Blocked</option>
+                    <option value="ready_for_qa">Ready for QA</option>
+                    <option value="done">Done</option>
+                </select>
+            </div>
+
+            <div class="flex justify-end space-x-2">
+                <button type="button" @click="openStoryModal=false" class="px-4 py-2 bg-gray-200 rounded-md">Cancel</button>
+                <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md">Create</button>
+            </div>
+        </form>
     </div>
+</div>
 
     {{-- ================= Edit Task Modal ================= --}}
     <div x-cloak x-show="openEditModal" x-transition
@@ -174,6 +217,16 @@
                         <option value="medium">Medium</option>
                         <option value="high">High</option>
                     </select>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700">Assign To</label>
+                <select name="user_id" class="w-full border rounded-md p-2">
+                    <option value="">-- Select User --</option>
+                    @foreach($users as $user)
+                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                    @endforeach
+                </select>
+            </div>
 
                     <label class="block text-sm font-medium text-gray-700">Status</label>
                     <select name="status" x-model="selectedTask.status" class="w-full border rounded-md p-2 mb-4">
@@ -221,6 +274,9 @@
                 <div>
                     <h3 class="text-lg font-semibold">{{ $story->title }}</h3>
                     <p class="text-sm text-gray-500">{{ $story->description }}</p>
+                    @if($story->user)
+                        <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $story->user->name }}</p>
+                    @endif
                 </div>
             </div>
 
@@ -236,30 +292,36 @@
                         <span class="text-xs text-gray-500">{{ $list->count() }}</span>
                     </div>
 
-                    <div class="space-y-3">
-                        @forelse($list as $task)
-                        <div class="p-3 bg-white border rounded cursor-pointer task-card"
-                            @click="editTask(@js($task))">
-                            <div class="flex justify-between">
-                                <span class="font-medium text-sm">{{ $task->title }}</span>
-                                <span class="text-xs {{ $task->priority === 'high' ? 'text-red-600' : ($task->priority === 'medium' ? 'text-yellow-600' : 'text-green-600') }}">
-                                    {{ ucfirst($task->priority) }}
-                                </span>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">{{ Str::limit($task->description, 50) }}</p>
-                            <div class="flex justify-between items-center mt-2">
-                                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                    {{ $task->story_points }} SP
-                                </span>
-                                <span class="text-xs text-gray-400">
-                                    #{{ $task->id }}
-                                </span>
-                            </div>
-                        </div>
-                        @empty
-                        <p class="text-xs text-gray-400">No tasks.</p>
-                        @endforelse
-                    </div>
+<div class="space-y-3">
+    @forelse($list as $task)
+        <div class="p-3 bg-white border rounded cursor-pointer task-card"
+            @click="editTask(@js($task))">
+            <div class="flex justify-between">
+                <span class="font-medium text-sm">{{ $task->title }}</span>
+                <span class="text-xs {{ $task->priority === 'high' ? 'text-red-600' : ($task->priority === 'medium' ? 'text-yellow-600' : 'text-green-600') }}">
+                    {{ ucfirst($task->priority) }}
+                </span>
+            </div>
+
+            @if($task->user)
+                <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $task->user->name }}</p>
+            @endif
+
+            <p class="text-xs text-gray-500 mt-1">{{ Str::limit($task->description, 50) }}</p>
+
+            <div class="flex justify-between items-center mt-2">
+                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    {{ $task->story_points }} SP
+                </span>
+                <span class="text-xs text-gray-400">
+                    #{{ $task->id }}
+                </span>
+            </div>
+        </div>
+    @empty
+        <p class="text-xs text-gray-400">No tasks.</p>
+    @endforelse
+</div>
                 </div>
                 @endforeach
             </div>
