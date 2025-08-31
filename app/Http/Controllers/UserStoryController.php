@@ -14,10 +14,11 @@ public function store(Request $request)
         'priority' => 'nullable|string',
         'status' => 'nullable|string',
         'user_id' => 'nullable|exists:users,id',
+        'deadline' => 'nullable|date'
     ]);
 
     UserStory::create($request->only([
-        'title', 'description', 'priority', 'status', 'user_id'
+        'title', 'description', 'priority', 'status', 'user_id','deadline'
     ]));
 
     return back()->with('success', 'User Story created successfully!');

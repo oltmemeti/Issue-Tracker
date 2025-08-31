@@ -166,6 +166,11 @@
                 </select>
             </div>
 
+            <div>
+    <label class="block text-sm font-medium text-gray-700">Deadline</label>
+    <input type="date" name="deadline" class="w-full mt-1 border rounded-md p-2" />
+</div>
+
             <div class="flex justify-end space-x-2">
                 <button type="button" @click="openStoryModal=false" class="px-4 py-2 bg-gray-200 rounded-md">Cancel</button>
                 <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md">Create</button>
@@ -276,6 +281,14 @@
                     <p class="text-sm text-gray-500">{{ $story->description }}</p>
                     @if($story->user)
                         <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $story->user->name }}</p>
+                    @else
+                        <p class="text-xs text-gray-400 mt-1">Unassigned</p>
+                    @endif
+                    
+                    @if($story->deadline)
+                        <p class="text-xs text-red-500 mt-1">Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}</p>
+                    @else
+                        <p class="text-xs text-red-500 mt-1">no deadline</p>
                     @endif
                 </div>
             </div>
