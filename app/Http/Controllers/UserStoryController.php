@@ -16,6 +16,7 @@ public function store(Request $request)
         'user_id' => 'nullable|exists:users,id',
         'deadline' => 'nullable|date'
     ]);
+    
 
     UserStory::create($request->only([
         'title', 'description', 'priority', 'status', 'user_id','deadline'
