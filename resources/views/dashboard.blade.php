@@ -493,6 +493,7 @@
     </div>
 
     {{-- ===================== Scripts ======================== --}}
+    <!-- addaed ajax -->
     <script>
         // CSRF for AJAX
         $.ajaxSetup({
