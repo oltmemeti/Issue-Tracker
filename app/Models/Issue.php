@@ -13,7 +13,8 @@ class Issue extends Model
         'priority',
         'status',
         'user_id',
-        'task_id',
+        'user_story_id',
+        'task_id',       
     ];
 
     public function user()
@@ -21,6 +22,12 @@ class Issue extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function story()
+    {
+        return $this->belongsTo(UserStory::class, 'user_story_id');
+    }
+
+    // optional link
     public function task()
     {
         return $this->belongsTo(Task::class);

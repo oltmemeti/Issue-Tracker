@@ -10,33 +10,33 @@ class IssueController extends Controller
 {
     public function index()
     {
-        $issues = Issue::latest()->with('task', 'user')->get();
+        // load story + user (and task if you still show it)
+        $issues = Issue::latest()->with('story', 'user', 'task')->get();
         return view('issues.index', compact('issues'));
     }
 
     public function create()
     {
+        
         $tasks = Task::all();
         return view('issues.create', compact('tasks'));
     }
 
     public function store(Request $request)
     {
-        $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'type' => 'required|in:bug,feature,improvement',
-            'priority' => 'required|in:low,medium,high',
-            'status' => 'required|in:open,in_progress,resolved',
-            'task_id' => 'nullable|exists:tasks,id',
-            'user_id' => 'nullable|exists:users,id', // match user story vibe
+        $data = $request->validate([
+            'title'        => 'required|string|max:255',
+            'description'  => 'nullable|string',
+            'type'         => 'required|in:bug,feature,improvement',
+            'priority'     => 'required|in:low,medium,high',
+            'status'       => 'required|in:open,in_progress,resolved',
+            'user_story_id'=> 'nullable|exists:user_stories,id',   
+            'task_id'      => 'nullable|exists:tasks,id',          
+            'user_id'      => 'nullable|exists:users,id',
         ]);
-    
-        Issue::create($request->only([
-            'title', 'description', 'type', 'priority', 'status', 'task_id', 'user_id'
-        ]));
-    
+        
+        Issue::create($data);
+
         return back()->with('success', 'Issue reported!');
     }
-    
 }
