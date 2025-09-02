@@ -1,23 +1,33 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Issue Tracker</title>
+
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
     <style>
-        .task-card { transition: all .2s ease }
-        .task-card:hover { transform: translateY(-2px); box-shadow: 0 4px 6px -1px rgba(0,0,0,.1) }
-        .modal { display:none }
-        .modal.show { display:flex }
+        [x-cloak] { display: none !important }
+
+        .task-card { transition: transform .15s ease, box-shadow .15s ease }
+        .task-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px -10px rgba(0,0,0,.35) }
+        .task-card.dragging { opacity: .75; transform: rotate(1deg) scale(1.01) }
+
+        .dropzone { transition: background-color .15s ease, border-color .15s ease }
+        .dropzone.drag-over { background-color: rgba(59,130,246,.08); border-color: rgba(59,130,246,.6) }
+
+        .modal { display: none }
+        .modal.show { display: flex }
     </style>
 </head>
-@php use Illuminate\Support\Str; @endphp
-<body class="bg-gray-100">
 
+@php use Illuminate\Support\Str; @endphp
+
+<body class="bg-gray-100">
     {{-- ===================== Header ======================== --}}
     <header class="bg-white shadow">
         <div class="max-w-7xl mx-auto flex justify-between items-center p-4">
@@ -56,7 +66,7 @@
                             @if($story->deadline)
                                 <p class="text-xs text-red-500 mt-1">Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}</p>
                             @else
-                                <p class="text-xs text-red-500 mt-1">no deadline</p>
+                                <p class="text-xs text-red-500 mt-1">No deadline</p>
                             @endif
                         </div>
 
@@ -74,8 +84,7 @@
                                 ? $story->tasks->whereIn('status', ['ready_for_qa'])
                                 : $story->tasks->where('status', $key)
                             )
-
-                            <div class="bg-gray-50 border rounded-lg p-3">
+                            <div class="bg-gray-50 border rounded-lg p-3 dropzone" data-status="{{ $key }}">
                                 <div class="flex items-center justify-between mb-3">
                                     <h4 class="font-semibold">{{ $label }}</h4>
                                     <span class="text-xs text-gray-500">{{ $list->count() }}</span>
@@ -94,6 +103,7 @@
                                             data-priority="{{ $task->priority }}"
                                             data-status="{{ $task->status }}"
                                             data-user="{{ $task->user_id ?? '' }}"
+                                            draggable="true"
                                         >
                                             <div class="flex justify-between">
                                                 <span class="font-medium text-sm">{{ $task->title }}</span>
@@ -343,13 +353,12 @@
     <div id="issueModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-lg w-full max-w-md p-6 relative">
             <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#issueModal">✖</button>
-            <h2 class="text-xl font-semibold mb-4">+ Create Issue</h2>
+        <h2 class="text-xl font-semibold mb-4">+ Create Issue</h2>
 
             <form id="issueForm" class="space-y-4">
                 @csrf
                 <div id="issueErrors" class="text-sm text-red-600 space-y-1 hidden"></div>
 
-                {{-- Assign to User Story --}}
                 <div>
                     <label class="block text-sm font-medium">Assign to User Story</label>
                     <select name="user_story_id" id="issue_story_id" class="w-full border rounded-md p-2" required>
@@ -398,7 +407,6 @@
                             <option value="resolved">Resolved</option>
                         </select>
                     </div>
-
                     <div>
                         <label class="block text-sm font-medium">Link to Task (optional)</label>
                         <select name="task_id" id="issue_task_id" class="w-full border rounded-md p-2">
@@ -493,7 +501,6 @@
     </div>
 
     {{-- ===================== Scripts ======================== --}}
-    <!-- addaed ajax -->
     <script>
         // CSRF for AJAX
         $.ajaxSetup({
@@ -502,10 +509,11 @@
 
         const openModal  = (sel) => $(sel).addClass('show');
         const closeModal = (sel) => $(sel).removeClass('show');
+
         const showErrors = ($box, errors) => {
             $box.empty().removeClass('hidden');
             if (typeof errors === 'string') { $box.append(`<div>${errors}</div>`); return; }
-            Object.values(errors).forEach(arr => (arr || []).forEach(msg => $box.append(`<div>${msg}</div>`)));
+            Object.values(errors || {}).forEach(arr => (arr || []).forEach(msg => $box.append(`<div>${msg}</div>`)));
         };
         const clearErrors = ($box) => { $box.addClass('hidden').empty(); }
 
@@ -515,7 +523,7 @@
         $(document).on('click', '.closeModal', function() { closeModal($(this).data('target')); });
 
         // Open Issue modal from a story button: preselect story + load tasks
-        $('.open-issue').on('click', function() {
+        $(document).on('click', '.open-issue', function() {
             const storyId = $(this).data('story');
             $('#issue_story_id').val(storyId);
 
@@ -603,7 +611,7 @@
             openModal('#editTaskModal');
         });
 
-        // Submit Edit Task (AJAX PUT)
+        // Submit Edit Task (AJAX PUT via POST + _method)
         $('#editTaskForm').on('submit', function(e) {
             e.preventDefault();
             clearErrors($('#editTaskErrors'));
@@ -622,6 +630,74 @@
                 showErrors($('#editTaskErrors'), res.errors || res.message || 'Failed to update task.');
             });
         });
+
+        // ------------- Drag & Drop (HTML5) + Status Persist -------------
+        (function DnD() {
+            let draggedEl = null;
+
+            // Make task cards draggable
+            $(document).on('dragstart', '.task-card', function (e) {
+                draggedEl = this;
+                $(this).addClass('dragging');
+                e.originalEvent.dataTransfer.effectAllowed = 'move';
+                e.originalEvent.dataTransfer.setData('text/plain', $(this).data('id')); // required for Firefox
+            });
+
+            $(document).on('dragend', '.task-card', function () {
+                $(this).removeClass('dragging');
+                draggedEl = null;
+            });
+
+            // Allow drop on columns
+            $(document).on('dragover', '.dropzone', function (e) {
+                e.preventDefault();
+                e.originalEvent.dataTransfer.dropEffect = 'move';
+                $(this).addClass('drag-over');
+            });
+
+            $(document).on('dragleave', '.dropzone', function () {
+                $(this).removeClass('drag-over');
+            });
+
+            // On drop: move card + PATCH status
+            $(document).on('drop', '.dropzone', function (e) {
+                e.preventDefault();
+                $(this).removeClass('drag-over');
+                if (!draggedEl) return;
+
+                const $card = $(draggedEl);
+                const taskId = $card.data('id');
+                const newStatus = $(this).data('status');
+
+                if ($card.data('status') === newStatus) return;
+
+                // Optimistic UI
+                const $targetList = $(this).find('.space-y-3');
+                if ($targetList.length) {
+                    $card.appendTo($targetList);
+                    $card.data('status', newStatus);
+                    updateColumnCounts();
+                }
+
+                // Persist
+                $.ajax({
+                    url: `{{ url('/tasks') }}/${taskId}/status`,
+                    method: 'PATCH',
+                    data: { status: newStatus }
+                }).fail(xhr => {
+                    console.error('Failed to update status', xhr?.responseJSON || xhr?.responseText);
+                    location.reload();
+                });
+            });
+
+            function updateColumnCounts() {
+                $('.dropzone').each(function () {
+                    const $col = $(this);
+                    const count = $col.find('.space-y-3 .task-card').length;
+                    $col.find('span.text-xs.text-gray-500').first().text(count);
+                });
+            }
+        })();
     </script>
 
     {{-- === Helper route to add in routes/web.php (authenticated) ===

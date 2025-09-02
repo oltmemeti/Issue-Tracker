@@ -49,4 +49,18 @@ class TaskController extends Controller
             'allTasks'
         ));
     }
+    public function updateStatus(Request $request, Task $task)
+{
+    $data = $request->validate([
+        'status' => 'required|in:new,in_progress,blocked,ready_for_qa,done',
+    ]);
+
+    $task->update(['status' => $data['status']]);
+
+    return response()->json([
+        'ok' => true,
+        'task_id' => $task->id,
+        'status' => $task->status,
+    ]);
+}
 }
