@@ -25,7 +25,11 @@
     </style>
 </head>
 
-@php use Illuminate\Support\Str; @endphp
+@php
+    use Illuminate\Support\Str;
+    // Combine stories for selects (task/issue modals)
+    $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
+@endphp
 
 <body class="bg-gray-100">
     {{-- ===================== Header ======================== --}}
@@ -47,10 +51,10 @@
         <h2 class="text-2xl font-semibold">Professional Task Management</h2>
     </div>
 
-    {{-- ============== Stories + 5 Columns Each ============= --}}
+    {{-- ============== Stories (Active) ============= --}}
     <div class="max-w-7xl mx-auto py-8 space-y-6">
-        @if($stories->count())
-            @foreach($stories as $story)
+        @if(($activeStories ?? collect())->count())
+            @foreach($activeStories as $story)
                 <div class="bg-white shadow rounded-lg p-4">
                     <div class="flex items-start justify-between mb-4">
                         <div>
@@ -64,7 +68,9 @@
                             @endif
 
                             @if($story->deadline)
-                                <p class="text-xs text-red-500 mt-1">Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}</p>
+                                <p class="text-xs text-red-500 mt-1">
+                                    Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}
+                                </p>
                             @else
                                 <p class="text-xs text-red-500 mt-1">No deadline</p>
                             @endif
@@ -211,6 +217,55 @@
                 @endforeach
             </div>
         </div>
+
+        {{-- ============== Completed Stories (All tasks done) ============= --}}
+        @if(($doneStories ?? collect())->count())
+            <div class="py-8 space-y-4">
+                <h3 class="text-lg font-semibold text-gray-800">Completed Stories</h3>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    @foreach($doneStories as $story)
+                        <div class="bg-white border rounded-lg p-4">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <div class="text-sm uppercase tracking-wide text-green-700 font-semibold">Done</div>
+                                    <h4 class="text-base font-semibold mt-1">{{ $story->title }}</h4>
+                                    <p class="text-sm text-gray-600 mt-1">{{ $story->description }}</p>
+
+                                    @if($story->user)
+                                        <p class="text-xs text-gray-400 mt-2">Owner: {{ $story->user->name }}</p>
+                                    @endif
+
+                                    @if($story->deadline)
+                                        <p class="text-xs text-gray-400">
+                                            Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}
+                                        </p>
+                                    @endif
+                                </div>
+
+                                <span class="text-[10px] px-2 py-1 rounded bg-green-100 text-green-800">#{{ $story->id }}</span>
+                            </div>
+
+                            {{-- (Optional) preview of done tasks --}}
+                            @php($doneTasks = $story->tasks->where('status','done'))
+                            @if($doneTasks->count())
+                                <div class="mt-3">
+                                    <div class="text-xs text-gray-500 mb-1">Tasks ({{ $doneTasks->count() }}):</div>
+                                    <ul class="space-y-1">
+                                        @foreach($doneTasks->take(5) as $t)
+                                            <li class="text-xs text-gray-600">✓ {{ $t->title }}</li>
+                                        @endforeach
+                                        @if($doneTasks->count() > 5)
+                                            <li class="text-xs text-gray-400">… and {{ $doneTasks->count() - 5 }} more</li>
+                                        @endif
+                                    </ul>
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        @endif
     </div>
 
     {{-- ===================== Modals (AJAX) ======================== --}}
@@ -289,8 +344,8 @@
                 <div id="taskErrors" class="text-sm text-red-600 space-y-1 hidden"></div>
 
                 <label class="block text-sm font-medium text-gray-700">User Story</label>
-                <select name="user_story_id" class="w-full border rounded-md p-2 mb-4" {{ $stories->isEmpty() ? 'disabled' : '' }} required>
-                    @forelse($stories as $story)
+                <select name="user_story_id" class="w-full border rounded-md p-2 mb-4" {{ $allStories->isEmpty() ? 'disabled' : '' }} required>
+                    @forelse($allStories as $story)
                         <option value="{{ $story->id }}">{{ $story->title }}</option>
                     @empty
                         <option value="">No stories yet</option>
@@ -340,8 +395,8 @@
                 <div class="flex justify-end space-x-2">
                     <button type="button" class="closeModal px-4 py-2 bg-gray-200 rounded-md" data-target="#taskModal">Cancel</button>
                     <button type="submit"
-                        class="px-4 py-2 bg-blue-600 text-white rounded-md {{ $stories->isEmpty() ? 'opacity-50 cursor-not-allowed' : '' }}"
-                        @if($stories->isEmpty()) disabled title="Create a User Story first" @endif>
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md {{ $allStories->isEmpty() ? 'opacity-50 cursor-not-allowed' : '' }}"
+                        @if($allStories->isEmpty()) disabled title="Create a User Story first" @endif>
                         Create Task
                     </button>
                 </div>
@@ -353,17 +408,18 @@
     <div id="issueModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
         <div class="bg-white rounded-lg shadow-lg w-full max-w-md p-6 relative">
             <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#issueModal">✖</button>
-        <h2 class="text-xl font-semibold mb-4">+ Create Issue</h2>
+            <h2 class="text-xl font-semibold mb-4">+ Create Issue</h2>
 
             <form id="issueForm" class="space-y-4">
                 @csrf
                 <div id="issueErrors" class="text-sm text-red-600 space-y-1 hidden"></div>
 
+                {{-- Assign to User Story --}}
                 <div>
                     <label class="block text-sm font-medium">Assign to User Story</label>
                     <select name="user_story_id" id="issue_story_id" class="w-full border rounded-md p-2" required>
                         <option value="">— Select User Story —</option>
-                        @foreach($stories as $s)
+                        @foreach($allStories as $s)
                             <option value="{{ $s->id }}">{{ $s->title }}</option>
                         @endforeach
                     </select>
@@ -407,6 +463,7 @@
                             <option value="resolved">Resolved</option>
                         </select>
                     </div>
+
                     <div>
                         <label class="block text-sm font-medium">Link to Task (optional)</label>
                         <select name="task_id" id="issue_task_id" class="w-full border rounded-md p-2">
@@ -449,7 +506,7 @@
 
                 <label class="block text-sm font-medium text-gray-700">User Story</label>
                 <select name="user_story_id" id="edit_user_story_id" class="w-full border rounded-md p-2 mb-4">
-                    @foreach($stories as $story)
+                    @foreach($allStories as $story)
                         <option value="{{ $story->id }}">{{ $story->title }}</option>
                     @endforeach
                 </select>
@@ -533,7 +590,9 @@
             if (storyId) {
                 $.get(`/stories/${storyId}/tasks`, function(tasks) {
                     (tasks || []).forEach(t => {
-                        $('#issue_task_id').append(`<option value="${t.id}">${$('<div>').text(t.title).html()}</option>`);
+                        $('#issue_task_id').append(
+                            `<option value="${t.id}">${$('<div>').text(t.title).html()}</option>`
+                        );
                     });
                     openModal('#issueModal');
                 }).fail(() => openModal('#issueModal'));
@@ -547,12 +606,13 @@
             const storyId = $(this).val();
             $('#issue_task_id').empty().append('<option value="">— None —</option>');
             $('#issueNoStoryMsg').toggle(!storyId);
-
             if (!storyId) return;
 
             $.get(`/stories/${storyId}/tasks`, function(tasks) {
                 (tasks || []).forEach(t => {
-                    $('#issue_task_id').append(`<option value="${t.id}">${$('<div>').text(t.title).html()}</option>`);
+                    $('#issue_task_id').append(
+                        `<option value="${t.id}">${$('<div>').text(t.title).html()}</option>`
+                    );
                 });
             });
         });
@@ -701,7 +761,8 @@
     </script>
 
     {{-- === Helper route to add in routes/web.php (authenticated) ===
-    Route::get('/stories/{story}/tasks', function (\App\Models\UserStory $story) {
+    use App\Models\UserStory;
+    Route::get('/stories/{story}/tasks', function (UserStory $story) {
         return $story->tasks()->select('id','title')->orderBy('title')->get();
     })->middleware('auth');
     --}}

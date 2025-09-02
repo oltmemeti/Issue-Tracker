@@ -14,34 +14,39 @@ class TaskController extends Controller
 {
     public function index()
     {
-        $stories = UserStory::with(['tasks' => fn($q) => $q->latest(), 'user'])
-            ->latest()->get();
-    
         $columnLabels = [
-            'new' => 'New',
-            'in_progress' => 'In Progress',
-            'blocked' => 'Blocked',
+            'new'          => 'New',
+            'in_progress'  => 'In Progress',
+            'blocked'      => 'Blocked',
             'ready_for_qa' => 'Ready for QA',
-            'done' => 'Done',
+            'done'         => 'Done',
         ];
     
         $users = User::select('id','name')->orderBy('name')->get();
     
-        // ✨ Issues lane data
         $issueColumnLabels = [
             'open'        => 'Open',
             'in_progress' => 'In Progress',
             'resolved'    => 'Resolved',
         ];
     
-        $issues = Issue::with(['task', 'user'])->latest()->get();
+        $issues = Issue::with(['story','task','user'])->latest()->get();
         $issuesByStatus = $issues->groupBy('status');
     
-        // (optional) for some selects, even if not required now
         $allTasks = Task::select('id','title')->orderBy('title')->get();
     
+        // ✅ Split stories
+        $activeStories = UserStory::with(['tasks' => fn($q)=>$q->latest(), 'user'])
+            ->where('status', '!=', 'done')
+            ->latest()->get();
+    
+        $doneStories = UserStory::with(['tasks' => fn($q)=>$q->latest(), 'user'])
+            ->where('status', 'done')
+            ->latest()->get();
+    
         return view('dashboard', compact(
-            'stories',
+            'activeStories',
+            'doneStories',
             'columnLabels',
             'users',
             'issueColumnLabels',
@@ -57,10 +62,15 @@ class TaskController extends Controller
 
     $task->update(['status' => $data['status']]);
 
+    optional($task->story)->recomputeStatusFromTasks();
+
     return response()->json([
-        'ok' => true,
-        'task_id' => $task->id,
-        'status' => $task->status,
+        'ok'          => true,
+        'task_id'     => $task->id,
+        'status'      => $task->status,
+        'story_id'    => $task->user_story_id,
+        'story_status'=> optional($task->story)->status,
     ]);
 }
+
 }
