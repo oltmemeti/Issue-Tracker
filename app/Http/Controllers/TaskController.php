@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 
 class TaskController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $columnLabels = [
             'new'          => 'New',
@@ -20,33 +20,75 @@ class TaskController extends Controller
             'ready_for_qa' => 'Ready for QA',
             'done'         => 'Done',
         ];
-
+    
         $users = User::select('id','name')->orderBy('name')->get();
-
+    
         $issueColumnLabels = [
             'open'        => 'Open',
             'in_progress' => 'In Progress',
             'resolved'    => 'Resolved',
         ];
-
-        // Eager-load tags to avoid N+1 in the Issues board
-        $issues = Issue::with(['story','task','user','tags'])->latest()->get();
+    
+        // --- Existing issue filters ---
+        $fStatus   = $request->query('issue_status');                  // open | in_progress | resolved
+        $fPriority = $request->query('issue_priority');                // low | medium | high
+        $fAssignee = $request->query('issue_user');                    // user_id
+        $fTags     = array_filter((array) $request->query('issue_tags', []));
+        $fQuery    = $request->query('q');
+    
+        // --- NEW: pin priority to top (applies to both issues and stories) ---
+        $pinPriority = $request->query('pin_priority'); // low|medium|high
+        $validPin    = in_array($pinPriority, ['low','medium','high'], true) ? $pinPriority : null;
+    
+        $issuesQuery = Issue::with(['story','task','user','tags'])->latest();
+    
+        if ($fStatus)   { $issuesQuery->where('status', $fStatus); }
+        if ($fPriority) { $issuesQuery->where('priority', $fPriority); }
+        if ($fAssignee) { $issuesQuery->where('user_id', $fAssignee); }
+        if (!empty($fTags)) {
+            $issuesQuery->whereHas('tags', fn($q)=> $q->whereIn('tags.id', $fTags));
+        }
+        if ($fQuery) {
+            $issuesQuery->where(function($q) use ($fQuery){
+                $q->where('title','like',"%{$fQuery}%")
+                  ->orWhere('description','like',"%{$fQuery}%");
+            });
+        }
+    
+        // Order issues so pinned priority appears first, then High > Medium > Low, then newest
+        if ($validPin) {
+            $issuesQuery->orderByRaw('(priority = ?) DESC', [$validPin]);
+        }
+        $issuesQuery->orderByRaw("FIELD(priority, 'high','medium','low') ASC")
+                    ->orderByDesc('created_at');
+    
+        $issues = $issuesQuery->get();
         $issuesByStatus = $issues->groupBy('status');
-
+    
         $allTasks = Task::select('id','title')->orderBy('title')->get();
-
-        // Stories split
+    
+        // ---- STORIES (Projects): also pin priority at top, then High > Medium > Low, then newest
+        $baseStoryOrder = function ($q) use ($validPin) {
+            if ($validPin) {
+                $q->orderByRaw('(priority = ?) DESC', [$validPin]);
+            }
+            $q->orderByRaw("FIELD(priority, 'high','medium','low') ASC")
+              ->latest();
+        };
+    
         $activeStories = UserStory::with(['tasks' => fn($q)=>$q->latest(), 'user'])
-            ->where('status', '!=', 'done')
-            ->latest()->get();
-
+            ->where('status','!=','done')
+            ->tap($baseStoryOrder)
+            ->get();
+    
         $doneStories = UserStory::with(['tasks' => fn($q)=>$q->latest(), 'user'])
-            ->where('status', 'done')
-            ->latest()->get();
-
-        // ✅ Define $tags for the Issue modal
-        $tags = Tag::orderBy('name')->get(['id','name','color']);
-
+            ->where('status','done')
+            ->tap($baseStoryOrder)
+            ->get();
+    
+        // tags for filters
+        $tags = Tag::orderBy('name')->get();
+    
         return view('dashboard', compact(
             'activeStories',
             'doneStories',
@@ -67,6 +109,7 @@ class TaskController extends Controller
 
         $task->update(['status' => $data['status']]);
 
+        // If you added this helper on UserStory, keep it
         optional($task->story)->recomputeStatusFromTasks();
 
         return response()->json([

@@ -10,7 +10,6 @@
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
   <style>
-    [x-cloak]{display:none!important}
     .task-card{transition:transform .15s ease, box-shadow .15s ease}
     .task-card:hover{transform:translateY(-2px); box-shadow:0 6px 20px -10px rgba(0,0,0,.35)}
     .task-card.dragging{opacity:.75; transform:rotate(1deg) scale(1.01)}
@@ -20,12 +19,20 @@
     .modal.show{display:flex}
   </style>
 </head>
+
 @php
   use Illuminate\Support\Str;
-  // For selects in modals
-  $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
+  $allStories   = ($activeStories ?? collect())->concat($doneStories ?? collect());
+  $selectedTags = collect(request('issue_tags', []))->map(fn($x)=>(string)$x)->all();
+  $hasFilters   = request()->filled('issue_status')
+                || request()->filled('issue_priority')
+                || request()->filled('issue_user')
+                || count($selectedTags) > 0
+                || request()->filled('q');
 @endphp
+
 <body class="bg-gray-100">
+
   {{-- ===================== Header ======================== --}}
   <header class="bg-white shadow">
     <div class="max-w-7xl mx-auto flex justify-between items-center p-4">
@@ -35,7 +42,7 @@
       </div>
       <div class="flex gap-2">
         <button id="openStoryBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md">+ Story</button>
-        <button id="openTaskBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md">+ Task</button>
+        <button id="openTaskBtn"  class="bg-blue-600  hover:bg-blue-700  text-white px-4 py-2 rounded-md">+ Task</button>
       </div>
     </div>
   </header>
@@ -45,8 +52,95 @@
     <h2 class="text-2xl font-semibold">Professional Task Management</h2>
   </div>
 
-  {{-- ============== Stories (Active) ============= --}}
   <div class="max-w-7xl mx-auto py-8 space-y-6">
+
+    {{-- ===================== Filters toolbar ======================== --}}
+    <form id="filtersForm" method="GET" action="{{ route('dashboard') }}" class="bg-white border rounded-lg p-4">
+      <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
+        {{-- Status --}}
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Status</label>
+          <select name="issue_status" class="w-full border rounded-md p-2">
+            <option value="">All</option>
+            @foreach(['open'=>'Open','in_progress'=>'In Progress','resolved'=>'Resolved'] as $v => $label)
+              <option value="{{ $v }}" @selected(request('issue_status')===$v)>{{ $label }}</option>
+            @endforeach
+          </select>
+        </div>
+
+        {{-- Priority pin (UI only; sorting handled in controller) --}}
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Priority</label>
+          <select name="pin_priority" class="w-full border rounded-md p-2">
+            <option value="">— No pin —</option>
+            @foreach(['high'=>'High','medium'=>'Medium','low'=>'Low'] as $v => $label)
+              <option value="{{ $v }}" @selected(request('pin_priority')===$v)>{{ $label }}</option>
+            @endforeach
+          </select>
+          <p class="text-[10px] text-gray-400 mt-1">Keeps the selected priority at the top across Projects & Issues.</p>
+        </div>
+
+        {{-- Assignee --}}
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Assignee</label>
+          <select name="issue_user" class="w-full border rounded-md p-2">
+            <option value="">Anyone</option>
+            @foreach($users as $u)
+              <option value="{{ $u->id }}" @selected((string)request('issue_user')===(string)$u->id)>{{ $u->name }}</option>
+            @endforeach
+          </select>
+        </div>
+
+        {{-- Tags dropdown (no Alpine; pure jQuery) --}}
+        <div class="md:col-span-2">
+          <label class="block text-xs text-gray-500 mb-1">Tags</label>
+
+          <button type="button" id="tagsDropdownBtn"
+                  class="w-full border rounded-md p-2 bg-white flex items-center justify-between">
+            <span id="tagsDropdownLabel" class="text-sm text-gray-700">
+              {{ count($selectedTags) ? count($selectedTags).' selected' : 'Select tags' }}
+            </span>
+            <svg class="w-4 h-4 text-gray-500 transition-transform" id="tagsDropdownChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <div id="tagsDropdownPanel"
+               class="hidden relative z-30 mt-1 w-full bg-white border rounded-md shadow-lg max-h-56 overflow-y-auto">
+            @foreach($tags as $tag)
+              <label class="flex items-center px-3 py-2 hover:bg-gray-50 text-sm">
+                <input type="checkbox"
+                       class="mr-2 tags-multi"
+                       name="issue_tags[]"
+                       value="{{ $tag->id }}"
+                       @checked(in_array((string)$tag->id, $selectedTags))>
+                <span>{{ $tag->name }}</span>
+              </label>
+            @endforeach
+            <div class="border-t p-2 flex items-center justify-between">
+              <button type="button" id="tagsDropdownClear" class="text-xs text-gray-600 hover:underline">Clear selection</button>
+              <button type="button" id="tagsDropdownClose" class="text-xs text-gray-600 hover:underline">Close</button>
+            </div>
+          </div>
+
+          <p class="text-[10px] text-gray-400 mt-1">Click to expand and select multiple tags.</p>
+        </div>
+
+        {{-- Search --}}
+        <div>
+          <label class="block text-xs text-gray-500 mb-1">Search</label>
+          <input type="text" name="q" value="{{ request('q') }}" placeholder="Title or description"
+                 class="w-full border rounded-md p-2">
+        </div>
+      </div>
+
+      <div class="mt-3 flex gap-2">
+        <button class="px-3 py-2 bg-gray-800 text-white rounded-md">Apply</button>
+        <a href="{{ route('dashboard') }}" class="px-3 py-2 bg-gray-200 rounded-md">Reset</a>
+      </div>
+    </form>
+
+    {{-- ===================== Active Stories ======================== --}}
     @if(($activeStories ?? collect())->count())
       @foreach($activeStories as $story)
         <div class="bg-white shadow rounded-lg p-4">
@@ -54,81 +148,64 @@
             <div>
               <h3 class="text-lg font-semibold">{{ $story->title }}</h3>
               <p class="text-sm text-gray-600">{{ $story->description }}</p>
-
-              @if($story->user)
-                <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $story->user->name }}</p>
-              @else
-                <p class="text-xs text-gray-400 mt-1">Unassigned</p>
-              @endif
-
-              @if($story->deadline)
-                <p class="text-xs text-red-500 mt-1">
-                  Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}
-                </p>
-              @else
-                <p class="text-xs text-red-500 mt-1">No deadline</p>
-              @endif
+              <p class="text-xs text-gray-400 mt-1">
+                {{ $story->user ? 'Assigned to: '.$story->user->name : 'Unassigned' }}
+              </p>
+              <p class="text-xs text-red-500 mt-1">
+                {{ $story->deadline ? 'Deadline: '.\Carbon\Carbon::parse($story->deadline)->format('M d, Y') : 'No deadline' }}
+              </p>
             </div>
 
-            <button
-              class="open-issue bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm"
-              data-story="{{ $story->id }}">
-              + Issue
-            </button>
+            <button class="open-issue bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm"
+                    data-story="{{ $story->id }}">+ Issue</button>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-            @foreach($columnLabels as $key => $label)
-              @php($list = $key === 'ready_for_qa'
-                ? $story->tasks->whereIn('status', ['ready_for_qa'])
-                : $story->tasks->where('status', $key)
-              )
-              <div class="bg-gray-50 border rounded-lg p-3 dropzone" data-status="{{ $key }}">
-                <div class="flex items-center justify-between mb-3">
-                  <h4 class="font-semibold">{{ $label }}</h4>
-                  <span class="text-xs text-gray-500">{{ $list->count() }}</span>
-                </div>
+          <div class="overflow-x-auto">
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 min-w-[900px]">
+              @foreach($columnLabels as $key => $label)
+                @php($list = $key==='ready_for_qa' ? $story->tasks->whereIn('status',['ready_for_qa'])
+                                                    : $story->tasks->where('status',$key))
+                <div class="bg-gray-50 border rounded-lg p-3 dropzone" data-status="{{ $key }}">
+                  <div class="flex items-center justify-between mb-3">
+                    <h4 class="font-semibold">{{ $label }}</h4>
+                    <span class="text-xs text-gray-500">{{ $list->count() }}</span>
+                  </div>
 
-                <div class="space-y-3">
-                  @forelse($list as $task)
-                    <div
-                      class="p-3 bg-white border rounded cursor-pointer task-card open-edit-task"
-                      data-id="{{ $task->id }}"
-                      data-story="{{ $task->user_story_id }}"
-                      data-title="{{ e($task->title) }}"
-                      data-description="{{ e($task->description) }}"
-                      data-criteria="{{ e($task->acceptance_criteria) }}"
-                      data-points="{{ $task->story_points }}"
-                      data-priority="{{ $task->priority }}"
-                      data-status="{{ $task->status }}"
-                      data-user="{{ $task->user_id ?? '' }}"
-                      draggable="true">
-                      <div class="flex justify-between">
-                        <span class="font-medium text-sm">{{ $task->title }}</span>
-                        <span class="text-xs {{ $task->priority === 'high' ? 'text-red-600' : ($task->priority === 'medium' ? 'text-yellow-600' : 'text-green-600') }}">
-                          {{ ucfirst($task->priority) }}
-                        </span>
+                  <div class="space-y-3">
+                    @forelse($list as $task)
+                      <div class="p-3 bg-white border rounded cursor-pointer task-card open-edit-task"
+                           data-id="{{ $task->id }}"
+                           data-story="{{ $task->user_story_id }}"
+                           data-title="{{ e($task->title) }}"
+                           data-description="{{ e($task->description) }}"
+                           data-criteria="{{ e($task->acceptance_criteria) }}"
+                           data-points="{{ $task->story_points }}"
+                           data-priority="{{ $task->priority }}"
+                           data-status="{{ $task->status }}"
+                           data-user="{{ $task->user_id ?? '' }}"
+                           draggable="true">
+                        <div class="flex justify-between">
+                          <span class="font-medium text-sm">{{ $task->title }}</span>
+                          <span class="text-xs {{ $task->priority==='high'?'text-red-600':($task->priority==='medium'?'text-yellow-600':'text-green-600') }}">
+                            {{ ucfirst($task->priority) }}
+                          </span>
+                        </div>
+                        @if($task->user)
+                          <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $task->user->name }}</p>
+                        @endif
+                        <p class="text-xs text-gray-500 mt-1">{{ Str::limit($task->description, 50) }}</p>
+                        <div class="flex justify-between items-center mt-2">
+                          <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">{{ $task->story_points }} SP</span>
+                          <span class="text-xs text-gray-400">#{{ $task->id }}</span>
+                        </div>
                       </div>
-
-                      @if($task->user)
-                        <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $task->user->name }}</p>
-                      @endif
-
-                      <p class="text-xs text-gray-500 mt-1">{{ Str::limit($task->description, 50) }}</p>
-
-                      <div class="flex justify-between items-center mt-2">
-                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                          {{ $task->story_points }} SP
-                        </span>
-                        <span class="text-xs text-gray-400">#{{ $task->id }}</span>
-                      </div>
-                    </div>
-                  @empty
-                    <p class="text-xs text-gray-400">No tasks.</p>
-                  @endforelse
+                    @empty
+                      <p class="text-xs text-gray-400">No tasks.</p>
+                    @endforelse
+                  </div>
                 </div>
-              </div>
-            @endforeach
+              @endforeach
+            </div>
           </div>
         </div>
       @endforeach
@@ -142,11 +219,44 @@
       </div>
     @endif
 
-    {{-- ================= Issues Board (Global) ================= --}}
+    {{-- ===================== Issues Board ======================== --}}
     <div class="bg-white shadow rounded-lg p-4">
-      <div class="flex items-center justify-between mb-4">
+      @php($filteredTotal = $issuesByStatus->flatten(1)->count())
+      <div class="flex items-center justify-between mb-3">
         <h3 class="text-lg font-semibold">Issues</h3>
+        <span class="text-xs text-gray-500">{{ $filteredTotal }} total</span>
       </div>
+
+      {{-- Filter chips --}}
+      @if($hasFilters)
+        <div class="mb-4 flex flex-wrap items-center gap-2">
+          <span class="text-xs text-gray-500 mr-1">Filters:</span>
+
+          @if(request('issue_status'))
+            <span class="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">Status: {{ Str::headline(request('issue_status')) }}</span>
+          @endif
+          @if(request('issue_priority'))
+            <span class="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">Priority: {{ Str::headline(request('issue_priority')) }}</span>
+          @endif
+          @if(request('issue_user'))
+            @php($u = $users->firstWhere('id', request('issue_user')))
+            <span class="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">Assignee: {{ $u?->name ?? ('#'.request('issue_user')) }}</span>
+          @endif
+          @if(count($selectedTags))
+            <span class="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">
+              Tags:
+              @foreach($tags->whereIn('id', $selectedTags) as $t)
+                <span class="ml-1">{{ $t->name }}</span>
+              @endforeach
+            </span>
+          @endif
+          @if(request('q'))
+            <span class="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">Search: “{{ request('q') }}”</span>
+          @endif
+
+          <a href="{{ route('dashboard') }}" class="text-xs px-2 py-1 bg-gray-800 text-white rounded">Clear</a>
+        </div>
+      @endif
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         @foreach($issueColumnLabels as $statusKey => $statusLabel)
@@ -166,16 +276,14 @@
                       <div class="text-xs text-gray-500 mt-1">
                         Type: <span class="uppercase">{{ $issue->type }}</span> ·
                         Priority:
-                        <span class="{{ $issue->priority === 'high' ? 'text-red-600' : ($issue->priority === 'medium' ? 'text-yellow-700' : 'text-green-700') }}">
+                        <span class="{{ $issue->priority==='high'?'text-red-600':($issue->priority==='medium'?'text-yellow-700':'text-green-700') }}">
                           {{ ucfirst($issue->priority) }}
                         </span>
                       </div>
 
-                      @if($issue->user)
-                        <div class="text-xs text-gray-400 mt-1">Assigned to: {{ $issue->user->name }}</div>
-                      @else
-                        <div class="text-xs text-gray-400 mt-1">Unassigned</div>
-                      @endif
+                      <div class="text-xs text-gray-400 mt-1">
+                        {{ $issue->user ? 'Assigned to: '.$issue->user->name : 'Unassigned' }}
+                      </div>
 
                       @if($issue->story)
                         <div class="text-xs text-indigo-700 mt-1">
@@ -194,8 +302,9 @@
                       @if($issue->tags && $issue->tags->count())
                         <div class="flex flex-wrap gap-1 mt-2">
                           @foreach($issue->tags as $tag)
-                            <span class="text-[10px] px-2 py-0.5 rounded"
-                                  style="background-color: {{ $tag->color ?? '#e5e7eb' }}; color: #fff;">
+                            @php($activeTag = in_array((string)$tag->id, $selectedTags))
+                            <span class="text-[10px] px-2 py-0.5 rounded {{ $activeTag ? 'ring-2 ring-offset-1 ring-indigo-400' : '' }}"
+                                  style="background-color: {{ $tag->color ?? '#e5e7eb' }}; color:#fff;">
                               {{ $tag->name }}
                             </span>
                           @endforeach
@@ -205,12 +314,8 @@
 
                     <div class="flex flex-col items-end gap-2 shrink-0">
                       <span class="text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-700">#{{ $issue->id }}</span>
-                      <button
-                        class="open-issue-comments text-xs px-2 py-1 rounded bg-gray-800 text-white"
-                        data-issue="{{ $issue->id }}"
-                        data-title="{{ e($issue->title) }}">
-                        Comments
-                      </button>
+                      <button class="open-issue-comments text-xs px-2 py-1 rounded bg-gray-800 text-white"
+                              data-issue="{{ $issue->id }}" data-title="{{ e($issue->title) }}">Comments</button>
                     </div>
                   </div>
 
@@ -219,7 +324,9 @@
                   @endif
                 </div>
               @empty
-                <p class="text-xs text-gray-400">No issues.</p>
+                <p class="text-xs text-gray-400">
+                  {{ $hasFilters ? 'No issues match the current filters.' : 'No issues.' }}
+                </p>
               @endforelse
             </div>
           </div>
@@ -227,9 +334,9 @@
       </div>
     </div>
 
-    {{-- ============== Completed Stories (All tasks done) ============= --}}
+    {{-- ===================== Completed Stories ======================== --}}
     @if(($doneStories ?? collect())->count())
-      <div class="py-8 space-y-4">
+      <div class="py-2 space-y-4">
         <h3 class="text-lg font-semibold text-gray-800">Completed Projects</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           @foreach($doneStories as $story)
@@ -239,15 +346,11 @@
                   <div class="text-sm uppercase tracking-wide text-green-700 font-semibold">Done</div>
                   <h4 class="text-base font-semibold mt-1">{{ $story->title }}</h4>
                   <p class="text-sm text-gray-600 mt-1">{{ $story->description }}</p>
-
                   @if($story->user)
                     <p class="text-xs text-gray-400 mt-2">Owner: {{ $story->user->name }}</p>
                   @endif
-
                   @if($story->deadline)
-                    <p class="text-xs text-gray-400">
-                      Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}
-                    </p>
+                    <p class="text-xs text-gray-400">Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}</p>
                   @endif
                 </div>
                 <span class="text-[10px] px-2 py-1 rounded bg-green-100 text-green-800">#{{ $story->id }}</span>
@@ -274,9 +377,8 @@
     @endif
   </div>
 
-  {{-- ===================== Modals (AJAX) ======================== --}}
-
-  {{-- Create Story Modal (wide) --}}
+  {{-- ===================== Modals ======================== --}}
+  {{-- Create Story --}}
   <div id="storyModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6 relative">
       <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#storyModal">✖</button>
@@ -331,7 +433,7 @@
           <input type="date" name="deadline" class="w-full mt-1 border rounded-md p-2" />
         </div>
 
-        <div class="flex justify-end space-x-2">
+        <div class="flex justify-end gap-2">
           <button type="button" class="closeModal px-4 py-2 bg-gray-200 rounded-md" data-target="#storyModal">Cancel</button>
           <button type="submit" class="px-4 py-2 bg-green-600 text-white rounded-md">Create</button>
         </div>
@@ -339,7 +441,7 @@
     </div>
   </div>
 
-  {{-- Create Task Modal (wide) --}}
+  {{-- Create Task --}}
   <div id="taskModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6 relative">
       <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#taskModal">✖</button>
@@ -359,13 +461,13 @@
         </select>
 
         <label class="block text-sm font-medium text-gray-700">Task Title</label>
-        <input type="text" name="title" class="w-full border rounded-md p-2 mb-4 focus:ring-2 focus:ring-blue-500" required>
+        <input type="text" name="title" class="w-full border rounded-md p-2 mb-4" required>
 
         <label class="block text-sm font-medium text-gray-700">Description</label>
-        <textarea name="description" class="w-full border rounded-md p-2 mb-4 focus:ring-2 focus:ring-blue-500"></textarea>
+        <textarea name="description" class="w-full border rounded-md p-2 mb-4"></textarea>
 
         <label class="block text-sm font-medium text-gray-700">Acceptance Criteria</label>
-        <textarea name="acceptance_criteria" class="w-full border rounded-md p-2 mb-4 focus:ring-2 focus:ring-blue-500"></textarea>
+        <textarea name="acceptance_criteria" class="w-full border rounded-md p-2 mb-4"></textarea>
 
         <label class="block text-sm font-medium text-gray-700">Story Points</label>
         <select name="story_points" class="w-full border rounded-md p-2 mb-4">
@@ -374,9 +476,7 @@
 
         <label class="block text-sm font-medium text-gray-700">Priority</label>
         <select name="priority" class="w-full border rounded-md p-2 mb-4">
-          <option value="low">Low</option>
-          <option value="medium" selected>Medium</option>
-          <option value="high">High</option>
+          <option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option>
         </select>
 
         <div>
@@ -398,10 +498,9 @@
           <option value="done">Done</option>
         </select>
 
-        <div class="flex justify-end space-x-2">
+        <div class="flex justify-end gap-2">
           <button type="button" class="closeModal px-4 py-2 bg-gray-200 rounded-md" data-target="#taskModal">Cancel</button>
-          <button type="submit"
-            class="px-4 py-2 bg-blue-600 text-white rounded-md {{ $allStories->isEmpty() ? 'opacity-50 cursor-not-allowed' : '' }}"
+          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md {{ $allStories->isEmpty() ? 'opacity-50 cursor-not-allowed' : '' }}"
             @if($allStories->isEmpty()) disabled title="Create a User Story first" @endif>
             Create Task
           </button>
@@ -410,7 +509,7 @@
     </div>
   </div>
 
-  {{-- Create Issue Modal (wide, with tags) --}}
+  {{-- Create Issue --}}
   <div id="issueModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6 relative">
       <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#issueModal">✖</button>
@@ -497,16 +596,13 @@
     </div>
   </div>
 
-  {{-- Edit Task Modal (Two-Section Layout, wide) --}}
+  {{-- Edit Task --}}
   <div id="editTaskModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-lg w-full sm:max-w-2xl p-0 relative">
       <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#editTaskModal">✖</button>
 
       <div class="px-6 pt-5 pb-3 border-b">
         <h2 class="text-xl font-semibold">Edit Task</h2>
-        @if ($errors->any())
-          <div class="text-xs text-red-600 mt-1">Please fix the errors below.</div>
-        @endif
       </div>
 
       <div class="p-6">
@@ -516,7 +612,6 @@
           <input type="hidden" id="edit_task_id">
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {{-- Details --}}
             <fieldset class="space-y-4">
               <legend class="text-sm font-semibold text-gray-800">Details</legend>
 
@@ -536,7 +631,6 @@
               </div>
             </fieldset>
 
-            {{-- Planning & Assignment --}}
             <fieldset class="space-y-4">
               <legend class="text-sm font-semibold text-gray-800">Planning & Assignment</legend>
 
@@ -552,8 +646,7 @@
               <div>
                 <label class="block text-sm font-medium text-gray-700">Story Points</label>
                 <select name="story_points" id="edit_points" class="w-full border rounded-md p-2">
-                  <option value="1">1</option><option value="2">2</option>
-                  <option value="3">3</option><option value="5">5</option><option value="8">8</option>
+                  <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option><option value="8">8</option>
                 </select>
               </div>
 
@@ -617,7 +710,7 @@
     </div>
   </div>
 
-  {{-- Issue Comments Modal (wide) --}}
+  {{-- Issue Comments --}}
   <div id="issueCommentsModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
     <div class="bg-white rounded-lg shadow-lg w-full sm:max-w-3xl p-0 relative">
       <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#issueCommentsModal">✖</button>
@@ -645,78 +738,64 @@
 
   {{-- ===================== Scripts ======================== --}}
   <script>
-    // ---- CSRF for AJAX ----
-    $.ajaxSetup({
-      headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') }
-    });
+    // CSRF
+    $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') } });
 
-    // ---- Globals ----
+    // Globals
     const currentUserId = @json(Auth::id());
     const TASKS_BASE  = @json(url('/tasks'));
     const ISSUES_BASE = @json(url('/issues'));
 
-    // ---- Helpers ----
-    const openModal  = (sel) => $(sel).addClass('show');
-    const closeModal = (sel) => $(sel).removeClass('show');
-    const clearErrors = ($box) => $box.addClass('hidden').empty();
-    function showErrors($box, errors) {
+    // Helpers
+    const openModal  = sel => $(sel).addClass('show');
+    const closeModal = sel => $(sel).removeClass('show');
+    const clearErrors = $box => $box.addClass('hidden').empty();
+    const escapeHtml = s => $('<div>').text(s ?? '').html();
+    function showErrors($box, errors){
       $box.empty().removeClass('hidden');
       if (typeof errors === 'string') { $box.append(`<div>${errors}</div>`); return; }
       Object.values(errors || {}).forEach(arr => (arr || []).forEach(msg => $box.append(`<div>${msg}</div>`)));
     }
-    const escapeHtml = (s) => $('<div>').text(s ?? '').html();
 
-    // ---------------- Modal Open/Close ----------------
+    // New / Open modals
     $('#openStoryBtn, #openStoryBtnEmpty').on('click', () => openModal('#storyModal'));
     $('#openTaskBtn').on('click', () => openModal('#taskModal'));
     $(document).on('click', '.closeModal', function(){ closeModal($(this).data('target')); });
 
-    // ---------------- Issue Modal: preload tasks for selected story ----------------
-    $(document).on('click', '.open-issue', function() {
-      const storyId = $(this).data('story');
-      $('#issue_story_id').val(storyId);
-
-      // Optionally you can load tasks for that story into a select if needed
+    // Issue modal (preselect story)
+    $(document).on('click', '.open-issue', function(){
+      $('#issue_story_id').val($(this).data('story'));
       openModal('#issueModal');
     });
 
-    // ---------------- Create Story (AJAX) ----------------
+    // Create Story
     $('#storyForm').on('submit', function(e){
       e.preventDefault();
       clearErrors($('#storyErrors'));
       $.post(`{{ route('stories.store') }}`, $(this).serialize())
         .done(() => { closeModal('#storyModal'); location.reload(); })
-        .fail(xhr => {
-          const res = xhr.responseJSON || {};
-          showErrors($('#storyErrors'), res.errors || res.message || 'Failed to create story.');
-        });
+        .fail(xhr => showErrors($('#storyErrors'), (xhr.responseJSON||{}).errors || 'Failed to create story.'));
     });
 
-    // ---------------- Create Task (AJAX) ----------------
+    // Create Task
     $('#taskForm').on('submit', function(e){
       e.preventDefault();
       clearErrors($('#taskErrors'));
       $.post(`{{ route('tasks.store') }}`, $(this).serialize())
         .done(() => { closeModal('#taskModal'); location.reload(); })
-        .fail(xhr => {
-          const res = xhr.responseJSON || {};
-          showErrors($('#taskErrors'), res.errors || res.message || 'Failed to create task.');
-        });
+        .fail(xhr => showErrors($('#taskErrors'), (xhr.responseJSON||{}).errors || 'Failed to create task.'));
     });
 
-    // ---------------- Create Issue (AJAX) ----------------
+    // Create Issue
     $('#issueForm').on('submit', function(e){
       e.preventDefault();
       clearErrors($('#issueErrors'));
       $.post(`{{ route('issues.store') }}`, $(this).serialize())
         .done(() => { closeModal('#issueModal'); location.reload(); })
-        .fail(xhr => {
-          const res = xhr.responseJSON || {};
-          showErrors($('#issueErrors'), res.errors || res.message || 'Failed to create issue.');
-        });
+        .fail(xhr => showErrors($('#issueErrors'), (xhr.responseJSON||{}).errors || 'Failed to create issue.'));
     });
 
-    // ---------------- Edit Task Modal: fill + open ----------------
+    // Edit Task (fill)
     $(document).on('click', '.open-edit-task', function(){
       const $el = $(this);
       $('#edit_task_id').val($el.data('id'));
@@ -728,251 +807,173 @@
       $('#edit_priority').val($el.data('priority'));
       $('#edit_status').val($el.data('status'));
       $('#edit_user_id').val($el.data('user') || '');
-
-      // load comments for this task
       loadComments($el.data('id'));
-      const $f = $('#commentForm'); if ($f.length) $f[0].reset();
-
+      $('#commentForm')[0]?.reset();
       openModal('#editTaskModal');
     });
 
-    // ---------------- Edit Task Save (AJAX) ----------------
+    // Save Task edits
     $('#editTaskForm').on('submit', function(e){
       e.preventDefault();
       clearErrors($('#editTaskErrors'));
       const id = $('#edit_task_id').val();
-      const payload = $(this).serialize();
-
-      $.ajax({ url: `/tasks/${id}`, method: 'POST', data: payload })
+      $.ajax({ url: `/tasks/${id}`, method: 'POST', data: $(this).serialize() })
         .done(() => { closeModal('#editTaskModal'); location.reload(); })
-        .fail(xhr => {
-          const res = xhr.responseJSON || {};
-          showErrors($('#editTaskErrors'), res.errors || res.message || 'Failed to update task.');
-        });
+        .fail(xhr => showErrors($('#editTaskErrors'), (xhr.responseJSON||{}).errors || 'Failed to update task.'));
     });
 
-    // ---------------- Drag & Drop (HTML5) + Status Persist ----------------
+    // Drag & Drop + persist
     (function DnD(){
-      let draggedEl = null;
-
-      $(document).on('dragstart', '.task-card', function(e){
-        draggedEl = this;
-        $(this).addClass('dragging');
-        e.originalEvent.dataTransfer.effectAllowed = 'move';
+      let draggedEl=null;
+      $(document).on('dragstart','.task-card',function(e){
+        draggedEl=this; $(this).addClass('dragging');
+        e.originalEvent.dataTransfer.effectAllowed='move';
         e.originalEvent.dataTransfer.setData('text/plain', $(this).data('id'));
       });
-
-      $(document).on('dragend', '.task-card', function(){
-        $(this).removeClass('dragging');
-        draggedEl = null;
+      $(document).on('dragend','.task-card',function(){ $(this).removeClass('dragging'); draggedEl=null; });
+      $(document).on('dragover','.dropzone',function(e){ e.preventDefault(); $(this).addClass('drag-over'); });
+      $(document).on('dragleave','.dropzone',function(){ $(this).removeClass('drag-over'); });
+      $(document).on('drop','.dropzone',function(e){
+        e.preventDefault(); $(this).removeClass('drag-over'); if(!draggedEl) return;
+        const $card=$(draggedEl), taskId=$card.data('id'), newStatus=$(this).data('status');
+        if ($card.data('status')===newStatus) return;
+        const $list=$(this).find('.space-y-3'); $list.append($card); $card.data('status', newStatus);
+        $.ajax({ url:`{{ url('/tasks') }}/${taskId}/status`, method:'PATCH', data:{status:newStatus}})
+          .fail(()=>location.reload());
       });
-
-      $(document).on('dragover', '.dropzone', function(e){
-        e.preventDefault();
-        e.originalEvent.dataTransfer.dropEffect = 'move';
-        $(this).addClass('drag-over');
-      });
-
-      $(document).on('dragleave', '.dropzone', function(){ $(this).removeClass('drag-over'); });
-
-      $(document).on('drop', '.dropzone', function(e){
-        e.preventDefault();
-        $(this).removeClass('drag-over');
-        if (!draggedEl) return;
-
-        const $card = $(draggedEl);
-        const taskId = $card.data('id');
-        const newStatus = $(this).data('status');
-        if ($card.data('status') === newStatus) return;
-
-        const $targetList = $(this).find('.space-y-3');
-        if ($targetList.length){
-          $card.appendTo($targetList);
-          $card.data('status', newStatus);
-          updateColumnCounts();
-        }
-
-        $.ajax({
-          url: `{{ url('/tasks') }}/${taskId}/status`,
-          method: 'PATCH',
-          data: { status: newStatus }
-        }).fail(xhr => {
-          console.error('Failed to update status', xhr?.responseJSON || xhr?.responseText);
-          location.reload();
-        });
-      });
-
-      function updateColumnCounts(){
-        $('.dropzone').each(function(){
-          const $col = $(this);
-          const count = $col.find('.space-y-3 .task-card').length;
-          $col.find('span.text-xs.text-gray-500').first().text(count);
-        });
-      }
     })();
 
-    // ---------------- Task Comments ----------------
+    // ----- Task Comments -----
     function renderComments(list){
-      const $list = $('#commentsList').empty();
-      $('#commentsCount').text(list.length);
-      if (!list.length){
-        $list.append('<p class="text-xs text-gray-400">No comments yet.</p>');
-        return;
-      }
-      list.forEach(c => {
-        const created = new Date(c.created_at).toLocaleString();
-        const canDelete = (String(c.user_id) === String(currentUserId));
+      const $list=$('#commentsList').empty(); $('#commentsCount').text(list.length);
+      if(!list.length){ $list.append('<p class="text-xs text-gray-400">No comments yet.</p>'); return; }
+      list.forEach(c=>{
+        const created=new Date(c.created_at).toLocaleString();
+        const canDelete=String(c.user_id)===String(currentUserId);
         $list.append(`
           <div class="border rounded-md p-2">
             <div class="flex items-center justify-between">
-              <div class="text-xs font-medium text-gray-800">${escapeHtml(c.user?.name || 'Unknown')}</div>
+              <div class="text-xs font-medium text-gray-800">${escapeHtml(c.user?.name||'Unknown')}</div>
               <div class="text-[10px] text-gray-500">${created}</div>
             </div>
             <p class="text-sm text-gray-700 mt-1 whitespace-pre-wrap">${escapeHtml(c.body)}</p>
-            ${canDelete ? `
-              <div class="flex justify-end mt-1">
-                <button class="text-[11px] text-red-600 hover:underline comment-delete" data-id="${c.id}">Delete</button>
-              </div>` : ``}
-          </div>
-        `);
+            ${canDelete?`<div class="flex justify-end mt-1"><button class="text-[11px] text-red-600 hover:underline comment-delete" data-id="${c.id}">Delete</button></div>`:''}
+          </div>`);
       });
     }
-
     function loadComments(taskId){
-      if (!taskId) return;
+      if(!taskId) return;
       $('#commentsList').html('<div class="text-xs text-gray-400">Loading...</div>');
       $.get(`${TASKS_BASE}/${taskId}/comments`)
-        .done(list => renderComments(list || []))
-        .fail(xhr => {
-          console.error('[comments] index error', xhr.status, xhr.responseText);
-          $('#commentsList').html('<div class="text-xs text-red-600">Failed to load comments.</div>');
-        });
+        .done(list=>renderComments(list||[]))
+        .fail(()=>$('#commentsList').html('<div class="text-xs text-red-600">Failed to load comments.</div>'));
     }
-
-    $(document).on('submit', '#commentForm', function(e){
+    $(document).on('submit','#commentForm',function(e){
       e.preventDefault();
-      const taskId = $('#edit_task_id').val();
-      if (!taskId){ alert('Task ID missing. Close and reopen the task.'); return; }
-
+      const taskId=$('#edit_task_id').val(); if(!taskId) return alert('Task ID missing. Close and reopen the task.');
       $('#commentErrors').addClass('hidden').empty();
-      $.ajax({
-        url: `${TASKS_BASE}/${taskId}/comments`,
-        method: 'POST',
-        data: $(this).serialize()
-      })
-      .done(() => { loadComments(taskId); $('#commentForm textarea[name="body"]').val(''); })
-      .fail(xhr => {
-        console.error('[comments] store error', xhr.status, xhr.responseText);
-        const $box = $('#commentErrors').removeClass('hidden').empty();
-        if (xhr.status === 401){ $box.text('Please sign in to add a comment.'); return; }
-        const res = xhr.responseJSON || {};
-        const errs = res.errors || res.message || 'Failed to add comment.';
-        if (typeof errs === 'string') $box.text(errs);
-        else Object.values(errs || {}).forEach(arr => (arr || []).forEach(m => $box.append(`<div>${m}</div>`)));
-      });
+      $.post(`${TASKS_BASE}/${taskId}/comments`, $(this).serialize())
+        .done(()=>{ loadComments(taskId); $('#commentForm textarea[name="body"]').val(''); })
+        .fail(xhr=>{
+          const $box=$('#commentErrors').removeClass('hidden').empty();
+          if(xhr.status===401) return $box.text('Please sign in to add a comment.');
+          const res=xhr.responseJSON||{}, errs=res.errors||res.message||'Failed to add comment.';
+          if(typeof errs==='string') $box.text(errs); else Object.values(errs||{}).forEach(arr=>(arr||[]).forEach(m=>$box.append(`<div>${m}</div>`)));
+        });
+    });
+    $(document).on('click','.comment-delete',function(){
+      const id=$(this).data('id'), taskId=$('#edit_task_id').val(); if(!id||!taskId) return;
+      $.ajax({url:`${TASKS_BASE}/${taskId}/comments/${id}`, method:'DELETE'})
+        .done(()=>loadComments(taskId))
+        .fail(()=>alert('Failed to delete comment.'));
     });
 
-    $(document).on('click', '.comment-delete', function(){
-      const id = $(this).data('id');
-      const taskId = $('#edit_task_id').val();
-      if (!id || !taskId) return;
-
-      $.ajax({ url: `${TASKS_BASE}/${taskId}/comments/${id}`, method: 'DELETE' })
-        .done(() => loadComments(taskId))
-        .fail(xhr => { console.error('[comments] destroy error', xhr.status, xhr.responseText); alert('Failed to delete comment.'); });
-    });
-
-    // ---------------- Issue Comments ----------------
-    $(document).on('click', '.open-issue-comments', function(){
-      const issueId = $(this).data('issue');
-      const title   = $(this).data('title') || '';
+    // ----- Issue Comments -----
+    $(document).on('click','.open-issue-comments',function(){
+      const issueId=$(this).data('issue'), title=$(this).data('title')||'';
       $('#issue_comments_issue_id').val(issueId);
       $('#issueCommentsHeader').text(`#${issueId} — ${title}`);
       $('#issueCommentForm')[0].reset();
       loadIssueComments(issueId);
       openModal('#issueCommentsModal');
     });
-
     function renderIssueComments(list){
-      const $list = $('#issueCommentsList').empty();
-      if (!list.length){
-        $list.append('<p class="text-xs text-gray-400">No comments yet.</p>');
-        return;
-      }
-      list.forEach(c => {
-        const created = new Date(c.created_at).toLocaleString();
-        const canDelete = (String(c.user_id) === String(currentUserId));
+      const $list=$('#issueCommentsList').empty();
+      if(!list.length){ $list.append('<p class="text-xs text-gray-400">No comments yet.</p>'); return; }
+      list.forEach(c=>{
+        const created=new Date(c.created_at).toLocaleString();
+        const canDelete=String(c.user_id)===String(currentUserId);
         $list.append(`
           <div class="border rounded-md p-2">
             <div class="flex items-center justify-between">
-              <div class="text-xs font-medium text-gray-800">${escapeHtml(c.user?.name || 'Unknown')}</div>
+              <div class="text-xs font-medium text-gray-800">${escapeHtml(c.user?.name||'Unknown')}</div>
               <div class="text-[10px] text-gray-500">${created}</div>
             </div>
             <p class="text-sm text-gray-700 mt-1 whitespace-pre-wrap">${escapeHtml(c.body)}</p>
-            ${canDelete ? `
-              <div class="flex justify-end mt-1">
-                <button class="text-[11px] text-red-600 hover:underline issue-comment-delete" data-id="${c.id}">Delete</button>
-              </div>` : ``}
-          </div>
-        `);
+            ${canDelete?`<div class="flex justify-end mt-1"><button class="text-[11px] text-red-600 hover:underline issue-comment-delete" data-id="${c.id}">Delete</button></div>`:''}
+          </div>`);
       });
     }
-
     function loadIssueComments(issueId){
       $('#issueCommentsList').html('<div class="text-xs text-gray-400">Loading...</div>');
       $.get(`${ISSUES_BASE}/${issueId}/comments`)
-        .done(list => renderIssueComments(list || []))
-        .fail(xhr => {
-          console.error('[issue comments] index error', xhr.status, xhr.responseText);
-          $('#issueCommentsList').html('<div class="text-xs text-red-600">Failed to load comments.</div>');
-        });
+        .done(list=>renderIssueComments(list||[]))
+        .fail(()=>$('#issueCommentsList').html('<div class="text-xs text-red-600">Failed to load comments.</div>'));
     }
-
-    $(document).on('submit', '#issueCommentForm', function(e){
+    $(document).on('submit','#issueCommentForm',function(e){
       e.preventDefault();
-      const issueId = $('#issue_comments_issue_id').val();
-      if (!issueId) return;
-
+      const issueId=$('#issue_comments_issue_id').val(); if(!issueId) return;
       $('#issueCommentErrors').addClass('hidden').empty();
-      $.ajax({
-        url: `${ISSUES_BASE}/${issueId}/comments`,
-        method: 'POST',
-        data: $(this).serialize()
-      })
-      .done(() => {
-        loadIssueComments(issueId);
-        $('#issueCommentForm textarea[name="body"]').val('');
-      })
-      .fail(xhr => {
-        console.error('[issue comments] store error', xhr.status, xhr.responseText);
-        const $box = $('#issueCommentErrors').removeClass('hidden').empty();
-        if (xhr.status === 401){ $box.text('Please sign in to add a comment.'); return; }
-        const res = xhr.responseJSON || {};
-        const errs = res.errors || res.message || 'Failed to add comment.';
-        if (typeof errs === 'string') $box.text(errs);
-        else Object.values(errs || {}).forEach(arr => (arr || []).forEach(m => $box.append(`<div>${m}</div>`)));
-      });
-    });
-
-    $(document).on('click', '.issue-comment-delete', function(){
-      const id = $(this).data('id');
-      const issueId = $('#issue_comments_issue_id').val();
-      if (!id || !issueId) return;
-
-      $.ajax({ url: `${ISSUES_BASE}/${issueId}/comments/${id}`, method: 'DELETE' })
-        .done(() => loadIssueComments(issueId))
-        .fail(xhr => {
-          console.error('[issue comments] destroy error', xhr.status, xhr.responseText);
-          alert('Failed to delete comment.');
+      $.post(`${ISSUES_BASE}/${issueId}/comments`, $(this).serialize())
+        .done(()=>{ loadIssueComments(issueId); $('#issueCommentForm textarea[name="body"]').val(''); })
+        .fail(xhr=>{
+          const $box=$('#issueCommentErrors').removeClass('hidden').empty();
+          if(xhr.status===401) return $box.text('Please sign in to add a comment.');
+          const res=xhr.responseJSON||{}, errs=res.errors||res.message||'Failed to add comment.';
+          if(typeof errs==='string') $box.text(errs); else Object.values(errs||{}).forEach(arr=>(arr||[]).forEach(m=>$box.append(`<div>${m}</div>`)));
         });
     });
+    $(document).on('click','.issue-comment-delete',function(){
+      const id=$(this).data('id'), issueId=$('#issue_comments_issue_id').val(); if(!id||!issueId) return;
+      $.ajax({url:`${ISSUES_BASE}/${issueId}/comments/${id}`, method:'DELETE'})
+        .done(()=>loadIssueComments(issueId))
+        .fail(()=>alert('Failed to delete comment.'));
+    });
+
+    // ===== Tags dropdown (pure jQuery) =====
+    (function TagsDropdown(){
+      const $btn   = $('#tagsDropdownBtn');
+      const $panel = $('#tagsDropdownPanel');
+      const $label = $('#tagsDropdownLabel');
+      const $chev  = $('#tagsDropdownChevron');
+
+      function updateLabel(){
+        const count = $panel.find('input.tags-multi:checked').length;
+        $label.text(count ? `${count} selected` : 'Select tags');
+      }
+      function openPanel(){
+        $panel.removeClass('hidden');
+        $chev.addClass('rotate-180');
+        $(document).on('mousedown.tagsOutside', (e)=>{
+          if(!$panel.is(e.target) && $panel.has(e.target).length===0 && !$btn.is(e.target) && $btn.has(e.target).length===0){
+            closePanel();
+          }
+        });
+        $(document).on('keydown.tagsEsc', (e)=>{ if(e.key==='Escape') closePanel(); });
+      }
+      function closePanel(){
+        $panel.addClass('hidden');
+        $chev.removeClass('rotate-180');
+        $(document).off('mousedown.tagsOutside keydown.tagsEsc');
+      }
+      $btn.on('click', function(){ $panel.hasClass('hidden') ? openPanel() : closePanel(); });
+      $('#tagsDropdownClose').on('click', closePanel);
+      $('#tagsDropdownClear').on('click', ()=>{ $panel.find('input.tags-multi:checked').prop('checked', false); updateLabel(); });
+
+      $panel.on('change','input.tags-multi', updateLabel);
+      updateLabel();
+    })();
   </script>
 
-  {{-- === Helper route to add in routes/web.php (authenticated) ===
-  use App\Models\UserStory;
-  Route::get('/stories/{story}/tasks', function (UserStory $story) {
-      return $story->tasks()->select('id','title')->orderBy('title')->get();
-  })->middleware('auth');
-  --}}
 </body>
 </html>
