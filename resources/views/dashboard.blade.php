@@ -11,12 +11,22 @@
 
   <style>
     .task-card{transition:transform .15s ease, box-shadow .15s ease}
-    .task-card:hover{transform:translateY(-2px); box-shadow:0 6px 20px -10px rgba(0,0,0,.35)}
-    .task-card.dragging{opacity:.75; transform:rotate(1deg) scale(1.01)}
+    .task-card:hover{transform:translateY(-2px); box-shadow:0 10px 30px -15px rgba(0,0,0,.35)}
+    .task-card.dragging{opacity:.85; transform:rotate(.5deg) scale(1.01)}
     .dropzone{transition:background-color .15s ease, border-color .15s ease}
-    .dropzone.drag-over{background:rgba(59,130,246,.08); border-color:rgba(59,130,246,.6)}
+    .dropzone.drag-over{background:rgba(59,130,246,.06); border-color:rgba(59,130,246,.45)}
     .modal{display:none}
     .modal.show{display:flex}
+    .sticky-filters{position:sticky; top:0; z-index:40; backdrop-filter:saturate(1.2) blur(2px)}
+    .col-title:before{content:"";display:block;height:3px;border-radius:9999px;margin-bottom:10px;opacity:.7}
+    .col-new:before{background:#3b82f6}
+    .col-blocked:before{background:#ef4444}
+    .col-ready_for_qa:before{background:#8b5cf6}
+    .col-done:before{background:#10b981}
+    .scroll-edge{position:relative}
+    .scroll-edge:before,.scroll-edge:after{content:"";position:absolute;top:0;bottom:0;width:16px;pointer-events:none}
+    .scroll-edge:before{left:0;box-shadow:inset 8px 0 12px -8px rgba(0,0,0,.15)}
+    .scroll-edge:after{right:0;box-shadow:inset -8px 0 12px -8px rgba(0,0,0,.15)}
   </style>
 </head>
 
@@ -55,7 +65,7 @@
   <div class="max-w-7xl mx-auto py-8 space-y-6">
 
     {{-- ===================== Filters toolbar ======================== --}}
-    <form id="filtersForm" method="GET" action="{{ route('dashboard') }}" class="bg-white border rounded-lg p-4">
+    <form id="filtersForm" method="GET" action="{{ route('dashboard') }}" class="sticky-filters bg-white/90 border rounded-lg p-4 shadow-sm">
       <div class="grid grid-cols-1 md:grid-cols-6 gap-3">
         {{-- Status --}}
         <div>
@@ -68,7 +78,7 @@
           </select>
         </div>
 
-        {{-- Priority pin (UI only; sorting handled in controller) --}}
+        {{-- Priority Pin --}}
         <div>
           <label class="block text-xs text-gray-500 mb-1">Priority</label>
           <select name="pin_priority" class="w-full border rounded-md p-2">
@@ -91,7 +101,7 @@
           </select>
         </div>
 
-        {{-- Tags dropdown (no Alpine; pure jQuery) --}}
+        {{-- Tags dropdown (portal) --}}
         <div class="md:col-span-2">
           <label class="block text-xs text-gray-500 mb-1">Tags</label>
 
@@ -105,6 +115,7 @@
             </svg>
           </button>
 
+          {{-- Original panel kept near button (we'll portal it to body when open) --}}
           <div id="tagsDropdownPanel"
                class="hidden relative z-30 mt-1 w-full bg-white border rounded-md shadow-lg max-h-56 overflow-y-auto">
             @foreach($tags as $tag)
@@ -143,37 +154,62 @@
     {{-- ===================== Active Stories ======================== --}}
     @if(($activeStories ?? collect())->count())
       @foreach($activeStories as $story)
-        <div class="bg-white shadow rounded-lg p-4">
+        <div class="bg-white shadow-sm hover:shadow-md transition rounded-lg p-4">
           <div class="flex items-start justify-between mb-4">
             <div>
-              <h3 class="text-lg font-semibold">{{ $story->title }}</h3>
+              <div class="flex items-center gap-2">
+                <h3 class="text-lg font-semibold">{{ $story->title }}</h3>
+                @if($story->priority)
+                  <span class="text-[10px] px-2 py-0.5 rounded-full
+                    {{ $story->priority==='high' ? 'bg-red-100 text-red-700' : ($story->priority==='medium' ? 'bg-amber-100 text-amber-700':'bg-emerald-100 text-emerald-700') }}">
+                    {{ ucfirst($story->priority) }}
+                  </span>
+                @endif
+              </div>
+
               <p class="text-sm text-gray-600">{{ $story->description }}</p>
-              <p class="text-xs text-gray-400 mt-1">
-                {{ $story->user ? 'Assigned to: '.$story->user->name : 'Unassigned' }}
-              </p>
-              <p class="text-xs text-red-500 mt-1">
-                {{ $story->deadline ? 'Deadline: '.\Carbon\Carbon::parse($story->deadline)->format('M d, Y') : 'No deadline' }}
-              </p>
+
+              <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500">
+                <span class="inline-flex items-center gap-1">
+                  <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-medium">
+                    {{ Str::of($story->user?->name)->explode(' ')->map(fn($p)=>Str::substr($p,0,1))->join('') ?: '—' }}
+                  </span>
+                  {{ $story->user->name ?? 'Unassigned' }}
+                </span>
+                <span>•</span>
+                <span>
+                  {{ $story->deadline ? 'Due '.\Carbon\Carbon::parse($story->deadline)->diffForHumans() : 'No deadline' }}
+                </span>
+                <span>•</span>
+
+              </div>
             </div>
 
-            <button class="open-issue bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm"
-                    data-story="{{ $story->id }}">+ Issue</button>
+            <div class="flex items-center gap-2">
+              <button class="open-issue bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm"
+                      data-story="{{ $story->id }}">+ Issue</button>
+              <button class="text-xs px-3 py-1.5 rounded-md border bg-white hover:bg-gray-50"
+                      onclick="$('#taskModal').addClass('show'); $('select[name=user_story_id]').val('{{ $story->id }}').trigger('change')">
+                + Task
+              </button>
+              <button class="delete-story text-xs text-red-600 hover:underline ml-2" data-id="{{ $story->id }}">Delete Project</button>
+            </div>
           </div>
 
-          <div class="overflow-x-auto">
+          <div class="overflow-x-auto scroll-edge">
             <div class="grid grid-cols-1 md:grid-cols-5 gap-4 min-w-[900px]">
               @foreach($columnLabels as $key => $label)
                 @php($list = $key==='ready_for_qa' ? $story->tasks->whereIn('status',['ready_for_qa'])
                                                     : $story->tasks->where('status',$key))
                 <div class="bg-gray-50 border rounded-lg p-3 dropzone" data-status="{{ $key }}">
                   <div class="flex items-center justify-between mb-3">
-                    <h4 class="font-semibold">{{ $label }}</h4>
+                    <h4 class="font-semibold col-title col-{{ $key }}">{{ $label }}</h4>
                     <span class="text-xs text-gray-500">{{ $list->count() }}</span>
                   </div>
 
                   <div class="space-y-3">
                     @forelse($list as $task)
-                      <div class="p-3 bg-white border rounded cursor-pointer task-card open-edit-task"
+                      <div class="p-3 bg-white border rounded cursor-grab active:cursor-grabbing task-card open-edit-task"
                            data-id="{{ $task->id }}"
                            data-story="{{ $task->user_story_id }}"
                            data-title="{{ e($task->title) }}"
@@ -186,8 +222,12 @@
                            draggable="true">
                         <div class="flex justify-between">
                           <span class="font-medium text-sm">{{ $task->title }}</span>
-                          <span class="text-xs {{ $task->priority==='high'?'text-red-600':($task->priority==='medium'?'text-yellow-600':'text-green-600') }}">
-                            {{ ucfirst($task->priority) }}
+                          <span class="text-xs"
+                                title="Priority: {{ ucfirst($task->priority) }}
+Status: {{ Str::headline($task->status) }}">
+                            <span class="{{ $task->priority==='high'?'text-red-600':($task->priority==='medium'?'text-yellow-600':'text-green-600') }}">
+                              {{ ucfirst($task->priority) }}
+                            </span>
                           </span>
                         </div>
                         @if($task->user)
@@ -197,6 +237,21 @@
                         <div class="flex justify-between items-center mt-2">
                           <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">{{ $task->story_points }} SP</span>
                           <span class="text-xs text-gray-400">#{{ $task->id }}</span>
+                        </div>
+
+                        <div class="mt-2 flex items-center justify-between">
+                          <div class="flex items-center gap-2">
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-700">
+                              {{ $task->status === 'ready_for_qa' ? 'QA' : Str::headline($task->status) }}
+                            </span>
+                            @if($task->user)
+                              <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-[10px] font-medium"
+                                    title="{{ $task->user->name }}">
+                                {{ Str::of($task->user->name)->explode(' ')->map(fn($p)=>Str::substr($p,0,1))->join('') }}
+                              </span>
+                            @endif
+                          </div>
+                          <button class="delete-task text-[11px] text-red-600 hover:underline" data-id="{{ $task->id }}">Delete</button>
                         </div>
                       </div>
                     @empty
@@ -220,7 +275,7 @@
     @endif
 
     {{-- ===================== Issues Board ======================== --}}
-    <div class="bg-white shadow rounded-lg p-4">
+    <div class="bg-white shadow-sm hover:shadow-md transition rounded-lg p-4">
       @php($filteredTotal = $issuesByStatus->flatten(1)->count())
       <div class="flex items-center justify-between mb-3">
         <h3 class="text-lg font-semibold">Issues</h3>
@@ -310,6 +365,10 @@
                           @endforeach
                         </div>
                       @endif
+
+                      <div class="mt-2">
+                        <button class="delete-issue text-xs text-red-600 hover:underline" data-id="{{ $issue->id }}">Delete</button>
+                      </div>
                     </div>
 
                     <div class="flex flex-col items-end gap-2 shrink-0">
@@ -375,6 +434,25 @@
         </div>
       </div>
     @endif
+  </div>
+
+  {{-- ===================== Portal root for dropdown ======================== --}}
+  <div id="tags-portal-root"></div>
+
+  {{-- ===================== Toast & Confirm ======================== --}}
+  <div id="toast" class="fixed bottom-4 right-4 z-[100] hidden">
+    <div id="toastInner" class="px-3 py-2 rounded shadow bg-gray-900 text-white text-sm"></div>
+  </div>
+
+  <div id="confirmModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-[90]">
+    <div class="bg-white rounded-lg shadow-lg w-full max-w-sm p-5">
+      <h3 class="text-base font-semibold mb-2">Please confirm</h3>
+      <p id="confirmText" class="text-sm text-gray-600 mb-4">Are you sure?</p>
+      <div class="flex justify-end gap-2">
+        <button class="px-3 py-1.5 rounded bg-gray-200" data-role="cancel">Cancel</button>
+        <button class="px-3 py-1.5 rounded bg-red-600 text-white" data-role="ok">Delete</button>
+      </div>
+    </div>
   </div>
 
   {{-- ===================== Modals ======================== --}}
@@ -614,17 +692,14 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <fieldset class="space-y-4">
               <legend class="text-sm font-semibold text-gray-800">Details</legend>
-
               <div>
                 <label class="block text-sm font-medium text-gray-700">Title</label>
                 <input type="text" name="title" id="edit_title" class="w-full border rounded-md p-2" required>
               </div>
-
               <div>
                 <label class="block text-sm font-medium text-gray-700">Description</label>
                 <textarea name="description" id="edit_description" class="w-full border rounded-md p-2 min-h-[110px]"></textarea>
               </div>
-
               <div>
                 <label class="block text-sm font-medium text-gray-700">Acceptance Criteria</label>
                 <textarea name="acceptance_criteria" id="edit_criteria" class="w-full border rounded-md p-2 min-h-[110px]"></textarea>
@@ -633,7 +708,6 @@
 
             <fieldset class="space-y-4">
               <legend class="text-sm font-semibold text-gray-800">Planning & Assignment</legend>
-
               <div>
                 <label class="block text-sm font-medium text-gray-700">User Story</label>
                 <select name="user_story_id" id="edit_user_story_id" class="w-full border rounded-md p-2">
@@ -642,21 +716,19 @@
                   @endforeach
                 </select>
               </div>
-
               <div>
                 <label class="block text-sm font-medium text-gray-700">Story Points</label>
                 <select name="story_points" id="edit_points" class="w-full border rounded-md p-2">
-                  <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="5">5</option><option value="8">8</option>
+                  <option value="1">1</option><option value="2">2</option>
+                  <option value="3">3</option><option value="5">5</option><option value="8">8</option>
                 </select>
               </div>
-
               <div>
                 <label class="block text-sm font-medium text-gray-700">Priority</label>
                 <select name="priority" id="edit_priority" class="w-full border rounded-md p-2">
                   <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
                 </select>
               </div>
-
               <div>
                 <label class="block text-sm font-medium text-gray-700">Assign To</label>
                 <select name="user_id" id="edit_user_id" class="w-full border rounded-md p-2">
@@ -666,7 +738,6 @@
                   @endforeach
                 </select>
               </div>
-
               <div>
                 <label class="block text-sm font-medium text-gray-700">Status</label>
                 <select name="status" id="edit_status" class="w-full border rounded-md p-2">
@@ -755,6 +826,22 @@
       $box.empty().removeClass('hidden');
       if (typeof errors === 'string') { $box.append(`<div>${errors}</div>`); return; }
       Object.values(errors || {}).forEach(arr => (arr || []).forEach(msg => $box.append(`<div>${msg}</div>`)));
+    }
+
+    // Toast + Confirm
+    function toast(msg, ms=1800){
+      const $wrap = $('#toast'), $inner = $('#toastInner');
+      $inner.text(msg); $wrap.removeClass('hidden');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(()=> $wrap.addClass('hidden'), ms);
+    }
+    function confirmModal(text="Are you sure?"){
+      const $m = $('#confirmModal'); $('#confirmText').text(text); $m.addClass('show');
+      return new Promise(res=>{
+        const off = ()=>{ $m.removeClass('show'); $(document).off('click.conf'); };
+        $(document).on('click.conf','#confirmModal [data-role=ok]', ()=>{ off(); res(true); });
+        $(document).on('click.conf','#confirmModal [data-role=cancel]', ()=>{ off(); res(false); });
+      });
     }
 
     // New / Open modals
@@ -937,43 +1024,94 @@
       const id=$(this).data('id'), issueId=$('#issue_comments_issue_id').val(); if(!id||!issueId) return;
       $.ajax({url:`${ISSUES_BASE}/${issueId}/comments/${id}`, method:'DELETE'})
         .done(()=>loadIssueComments(issueId))
-        .fail(()=>alert('Failed to delete comment.'));
+        .fail(()=>toast('Failed to delete comment', 2200));
     });
 
-    // ===== Tags dropdown (pure jQuery) =====
-    (function TagsDropdown(){
+    // ===== Tags dropdown via portal (no layout shift) =====
+    (function TagDropdownPortal(){
       const $btn   = $('#tagsDropdownBtn');
-      const $panel = $('#tagsDropdownPanel');
       const $label = $('#tagsDropdownLabel');
-      const $chev  = $('#tagsDropdownChevron');
+      const $panel = $('#tagsDropdownPanel');
+      const $root  = $('#tags-portal-root');
+
+      let open = false;
 
       function updateLabel(){
         const count = $panel.find('input.tags-multi:checked').length;
         $label.text(count ? `${count} selected` : 'Select tags');
       }
-      function openPanel(){
-        $panel.removeClass('hidden');
-        $chev.addClass('rotate-180');
-        $(document).on('mousedown.tagsOutside', (e)=>{
-          if(!$panel.is(e.target) && $panel.has(e.target).length===0 && !$btn.is(e.target) && $btn.has(e.target).length===0){
-            closePanel();
-          }
+      function placePanel(){
+        const b = $btn[0].getBoundingClientRect();
+        Object.assign($panel[0].style, {
+          position: 'fixed',
+          top: (b.bottom + 4) + 'px',
+          left: b.left + 'px',
+          width: b.width + 'px',
+          zIndex: 100,
         });
-        $(document).on('keydown.tagsEsc', (e)=>{ if(e.key==='Escape') closePanel(); });
+      }
+      function openPanel(){
+        if (open) return;
+        open = true;
+        $root.append($panel.detach());
+        placePanel();
+        $panel.removeClass('hidden');
+        $('#tagsDropdownChevron').addClass('rotate-180');
+        $(window).on('resize.tags scroll.tags', placePanel);
+        $(document).on('mousedown.tags', onOutside);
+        $(document).on('keydown.tags', (e)=> e.key==='Escape' && closePanel());
       }
       function closePanel(){
+        if (!open) return;
+        open = false;
         $panel.addClass('hidden');
-        $chev.removeClass('rotate-180');
-        $(document).off('mousedown.tagsOutside keydown.tagsEsc');
+        $('#tagsDropdownChevron').removeClass('rotate-180');
+        $('#tagsDropdownBtn').parent().append($panel.detach());
+        $(window).off('resize.tags scroll.tags');
+        $(document).off('mousedown.tags keydown.tags');
       }
-      $btn.on('click', function(){ $panel.hasClass('hidden') ? openPanel() : closePanel(); });
+      function onOutside(e){
+        if(!$panel.is(e.target) && $panel.has(e.target).length===0 && !$btn.is(e.target) && $btn.has(e.target).length===0){
+          closePanel();
+        }
+      }
+
+      $btn.on('click', ()=> open ? closePanel() : openPanel());
       $('#tagsDropdownClose').on('click', closePanel);
       $('#tagsDropdownClear').on('click', ()=>{ $panel.find('input.tags-multi:checked').prop('checked', false); updateLabel(); });
-
-      $panel.on('change','input.tags-multi', updateLabel);
+      $panel.on('change', 'input.tags-multi', updateLabel);
       updateLabel();
     })();
+
+    // Deletes with nice confirm + toast
+    $(document).on('click', '.delete-task', async function() {
+      if (!await confirmModal('Delete this task?')) return;
+      const id = $(this).data('id');
+      $.ajax({ url: `/tasks/${id}`, method: 'DELETE' })
+        .done(()=>{ toast('Task deleted'); location.reload(); })
+        .fail(()=> toast('Failed to delete task', 2200));
+    });
+    $(document).on('click', '.delete-story', async function() {
+      if (!await confirmModal('Delete this project and its tasks/issues (if cascading)?')) return;
+      const id = $(this).data('id');
+      $.ajax({ url: `/stories/${id}`, method: 'DELETE' })
+        .done(()=>{ toast('Project deleted'); location.reload(); })
+        .fail(()=> toast('Failed to delete project', 2200));
+    });
+    $(document).on('click', '.delete-issue', async function() {
+      if (!await confirmModal('Delete this issue?')) return;
+      const id = $(this).data('id');
+      $.ajax({ url: `/issues/${id}`, method: 'DELETE' })
+        .done(()=>{ toast('Issue deleted'); location.reload(); })
+        .fail(()=> toast('Failed to delete issue', 2200));
+    });
   </script>
 
+  {{-- === Helper route to add in routes/web.php (authenticated) ===
+  use App\Models\UserStory;
+  Route::get('/stories/{story}/tasks', function (UserStory $story) {
+      return $story->tasks()->select('id','title')->orderBy('title')->get();
+  })->middleware('auth');
+  --}}
 </body>
 </html>

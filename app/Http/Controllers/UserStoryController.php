@@ -25,5 +25,11 @@ public function store(Request $request)
     return back()->with('success', 'User Story created successfully!');
 }
 
+public function destroy(UserStory $story)
+{
+    $story->delete();
+    return response()->json(['ok' => true]);
+}
+
     
 }
