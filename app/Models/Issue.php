@@ -32,4 +32,9 @@ class Issue extends Model
     {
         return $this->belongsTo(Task::class);
     }
+
+    public function tags()
+{
+    return $this->belongsToMany(Tag::class);
+}
 }

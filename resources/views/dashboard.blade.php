@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -11,50 +10,25 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
     <style>
-        [x-cloak] {
-            display: none !important
-        }
-
-        .task-card {
-            transition: transform .15s ease, box-shadow .15s ease
-        }
-
-        .task-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px -10px rgba(0, 0, 0, .35)
-        }
-
-        .task-card.dragging {
-            opacity: .75;
-            transform: rotate(1deg) scale(1.01)
-        }
-
-        .dropzone {
-            transition: background-color .15s ease, border-color .15s ease
-        }
-
-        .dropzone.drag-over {
-            background-color: rgba(59, 130, 246, .08);
-            border-color: rgba(59, 130, 246, .6)
-        }
-
-        .modal {
-            display: none
-        }
-
-        .modal.show {
-            display: flex
-        }
+        [x-cloak]{display:none!important}
+        .task-card{transition:transform .15s ease, box-shadow .15s ease}
+        .task-card:hover{transform:translateY(-2px); box-shadow:0 6px 20px -10px rgba(0,0,0,.35)}
+        .task-card.dragging{opacity:.75; transform:rotate(1deg) scale(1.01)}
+        .dropzone{transition:background-color .15s ease, border-color .15s ease}
+        .dropzone.drag-over{background-color:rgba(59,130,246,.08); border-color:rgba(59,130,246,.6)}
+        .modal{display:none}
+        .modal.show{display:flex}
     </style>
 </head>
 
 @php
-use Illuminate\Support\Str;
-// Combine stories for selects (task/issue modals)
-$allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
+    use Illuminate\Support\Str;
+    // Combine stories for selects (task/issue modals)
+    $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
 @endphp
 
 <body class="bg-gray-100">
+
     {{-- ===================== Header ======================== --}}
     <header class="bg-white shadow">
         <div class="max-w-7xl mx-auto flex justify-between items-center p-4">
@@ -74,102 +48,95 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
         <h2 class="text-2xl font-semibold">Professional Task Management</h2>
     </div>
 
-    {{-- ============== Stories (Active) ============= --}}
+    {{-- ===================== Content ======================== --}}
     <div class="max-w-7xl mx-auto py-8 space-y-6">
+
+        {{-- ============== Stories (Active) ============= --}}
         @if(($activeStories ?? collect())->count())
-        @foreach($activeStories as $story)
-        <div class="bg-white shadow rounded-lg p-4">
-            <div class="flex items-start justify-between mb-4">
-                <div>
-                    <h3 class="text-lg font-semibold">{{ $story->title }}</h3>
-                    <p class="text-sm text-gray-600">{{ $story->description }}</p>
+            @foreach($activeStories as $story)
+                <div class="bg-white shadow rounded-lg p-4">
+                    <div class="flex items-start justify-between mb-4">
+                        <div>
+                            <h3 class="text-lg font-semibold">{{ $story->title }}</h3>
+                            <p class="text-sm text-gray-600">{{ $story->description }}</p>
 
-                    @if($story->user)
-                    <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $story->user->name }}</p>
-                    @else
-                    <p class="text-xs text-gray-400 mt-1">Unassigned</p>
-                    @endif
-
-                    @if($story->deadline)
-                    <p class="text-xs text-red-500 mt-1">
-                        Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}
-                    </p>
-                    @else
-                    <p class="text-xs text-red-500 mt-1">No deadline</p>
-                    @endif
-                </div>
-
-                <!-- Per-story +Issue -->
-                <button
-                    class="open-issue bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm"
-                    data-story="{{ $story->id }}">
-                    + Issue
-                </button>
-            </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
-                @foreach($columnLabels as $key => $label)
-                @php($list = $key === 'ready_for_qa'
-                ? $story->tasks->whereIn('status', ['ready_for_qa'])
-                : $story->tasks->where('status', $key)
-                )
-                <div class="bg-gray-50 border rounded-lg p-3 dropzone" data-status="{{ $key }}">
-                    <div class="flex items-center justify-between mb-3">
-                        <h4 class="font-semibold">{{ $label }}</h4>
-                        <span class="text-xs text-gray-500">{{ $list->count() }}</span>
-                    </div>
-
-                    <div class="space-y-3">
-                        @forelse($list as $task)
-                        <div
-                            class="p-3 bg-white border rounded cursor-pointer task-card open-edit-task"
-                            data-id="{{ $task->id }}"
-                            data-story="{{ $task->user_story_id }}"
-                            data-title="{{ e($task->title) }}"
-                            data-description="{{ e($task->description) }}"
-                            data-criteria="{{ e($task->acceptance_criteria) }}"
-                            data-points="{{ $task->story_points }}"
-                            data-priority="{{ $task->priority }}"
-                            data-status="{{ $task->status }}"
-                            data-user="{{ $task->user_id ?? '' }}"
-                            draggable="true">
-                            <div class="flex justify-between">
-                                <span class="font-medium text-sm">{{ $task->title }}</span>
-                                <span class="text-xs {{ $task->priority === 'high' ? 'text-red-600' : ($task->priority === 'medium' ? 'text-yellow-600' : 'text-green-600') }}">
-                                    {{ ucfirst($task->priority) }}
-                                </span>
-                            </div>
-
-                            @if($task->user)
-                            <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $task->user->name }}</p>
+                            @if($story->user)
+                                <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $story->user->name }}</p>
+                            @else
+                                <p class="text-xs text-gray-400 mt-1">Unassigned</p>
                             @endif
 
-                            <p class="text-xs text-gray-500 mt-1">{{ Str::limit($task->description, 50) }}</p>
-
-                            <div class="flex justify-between items-center mt-2">
-                                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                    {{ $task->story_points }} SP
-                                </span>
-                                <span class="text-xs text-gray-400">#{{ $task->id }}</span>
-                            </div>
+                            @if($story->deadline)
+                                <p class="text-xs text-red-500 mt-1">Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}</p>
+                            @else
+                                <p class="text-xs text-red-500 mt-1">No deadline</p>
+                            @endif
                         </div>
-                        @empty
-                        <p class="text-xs text-gray-400">No tasks.</p>
-                        @endforelse
+
+                        <button class="open-issue bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-md text-sm"
+                                data-story="{{ $story->id }}">+ Issue</button>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        @foreach($columnLabels as $key => $label)
+                            @php($list = $key === 'ready_for_qa'
+                                ? $story->tasks->whereIn('status', ['ready_for_qa'])
+                                : $story->tasks->where('status', $key)
+                            )
+                            <div class="bg-gray-50 border rounded-lg p-3 dropzone" data-status="{{ $key }}">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h4 class="font-semibold">{{ $label }}</h4>
+                                    <span class="text-xs text-gray-500">{{ $list->count() }}</span>
+                                </div>
+
+                                <div class="space-y-3">
+                                    @forelse($list as $task)
+                                        <div class="p-3 bg-white border rounded cursor-pointer task-card open-edit-task"
+                                             data-id="{{ $task->id }}"
+                                             data-story="{{ $task->user_story_id }}"
+                                             data-title="{{ e($task->title) }}"
+                                             data-description="{{ e($task->description) }}"
+                                             data-criteria="{{ e($task->acceptance_criteria) }}"
+                                             data-points="{{ $task->story_points }}"
+                                             data-priority="{{ $task->priority }}"
+                                             data-status="{{ $task->status }}"
+                                             data-user="{{ $task->user_id ?? '' }}"
+                                             draggable="true">
+                                            <div class="flex justify-between">
+                                                <span class="font-medium text-sm">{{ $task->title }}</span>
+                                                <span class="text-xs {{ $task->priority === 'high' ? 'text-red-600' : ($task->priority === 'medium' ? 'text-yellow-600' : 'text-green-600') }}">
+                                                    {{ ucfirst($task->priority) }}
+                                                </span>
+                                            </div>
+
+                                            @if($task->user)
+                                                <p class="text-xs text-gray-400 mt-1">Assigned to: {{ $task->user->name }}</p>
+                                            @endif
+
+                                            <p class="text-xs text-gray-500 mt-1">{{ Str::limit($task->description, 50) }}</p>
+
+                                            <div class="flex justify-between items-center mt-2">
+                                                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">{{ $task->story_points }} SP</span>
+                                                <span class="text-xs text-gray-400">#{{ $task->id }}</span>
+                                            </div>
+                                        </div>
+                                    @empty
+                                        <p class="text-xs text-gray-400">No tasks.</p>
+                                    @endforelse
+                                </div>
+                            </div>
+                        @endforeach
                     </div>
                 </div>
-                @endforeach
-            </div>
-        </div>
-        @endforeach
+            @endforeach
         @else
-        <div class="max-w-3xl mx-auto bg-white rounded-lg shadow p-8 text-center">
-            <h3 class="text-lg font-semibold mb-2">No user stories yet</h3>
-            <p class="text-gray-500 mb-4">Create a story and then add Dev/QA tasks inside it.</p>
-            <button id="openStoryBtnEmpty" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md">
-                + Create Your First Story
-            </button>
-        </div>
+            <div class="max-w-3xl mx-auto bg-white rounded-lg shadow p-8 text-center">
+                <h3 class="text-lg font-semibold mb-2">No user stories yet</h3>
+                <p class="text-gray-500 mb-4">Create a story and then add Dev/QA tasks inside it.</p>
+                <button id="openStoryBtnEmpty" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md">
+                    + Create Your First Story
+                </button>
+            </div>
         @endif
 
         {{-- ================= Issues Board (Global) ================= --}}
@@ -180,113 +147,121 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 @foreach($issueColumnLabels as $statusKey => $statusLabel)
-                @php($list = $issuesByStatus->get($statusKey, collect()))
-                <div class="bg-gray-50 border rounded-lg p-3">
-                    <div class="flex items-center justify-between mb-3">
-                        <h4 class="font-semibold">{{ $statusLabel }}</h4>
-                        <span class="text-xs text-gray-500">{{ $list->count() }}</span>
-                    </div>
+                    @php($list = $issuesByStatus->get($statusKey, collect()))
+                    <div class="bg-gray-50 border rounded-lg p-3">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="font-semibold">{{ $statusLabel }}</h4>
+                            <span class="text-xs text-gray-500">{{ $list->count() }}</span>
+                        </div>
 
-                    <div class="space-y-3">
-                        @forelse($list as $issue)
-                        <div class="p-3 bg-white border rounded task-card">
-                            <div class="flex justify-between items-start">
-                                <div>
-                                    <div class="font-medium text-sm">{{ $issue->title }}</div>
-                                    <div class="text-xs text-gray-500 mt-1">
-                                        Type: <span class="uppercase">{{ $issue->type }}</span> ·
-                                        Priority:
-                                        <span class="{{ $issue->priority === 'high' ? 'text-red-600' : ($issue->priority === 'medium' ? 'text-yellow-700' : 'text-green-700') }}">
-                                            {{ ucfirst($issue->priority) }}
-                                        </span>
+                        <div class="space-y-3">
+                            @forelse($list as $issue)
+                                <div class="p-3 bg-white border rounded task-card">
+                                    <div class="flex justify-between items-start">
+                                        <div>
+                                            <div class="font-medium text-sm">{{ $issue->title }}</div>
+                                            <div class="text-xs text-gray-500 mt-1">
+                                                Type: <span class="uppercase">{{ $issue->type }}</span> ·
+                                                Priority:
+                                                <span class="{{ $issue->priority === 'high' ? 'text-red-600' : ($issue->priority === 'medium' ? 'text-yellow-700' : 'text-green-700') }}">
+                                                    {{ ucfirst($issue->priority) }}
+                                                </span>
+                                            </div>
+
+                                            @if($issue->user)
+                                                <div class="text-xs text-gray-400 mt-1">Assigned to: {{ $issue->user->name }}</div>
+                                            @else
+                                                <div class="text-xs text-gray-400 mt-1">Unassigned</div>
+                                            @endif
+
+                                            @if($issue->story)
+                                                <div class="text-xs text-indigo-700 mt-1">
+                                                    User Story: #{{ $issue->story->id }} — {{ Str::limit($issue->story->title, 60) }}
+                                                </div>
+                                            @else
+                                                <div class="text-xs text-gray-400 mt-1">No User Story</div>
+                                            @endif
+
+                                            @if($issue->tags->count())
+                                                <div class="flex flex-wrap gap-1 mt-2">
+                                                    @foreach($issue->tags as $tag)
+                                                        <span class="text-[10px] px-2 py-0.5 rounded"
+                                                              style="background-color: {{ $tag->color ?? '#e5e7eb' }}; color: white;">
+                                                            {{ $tag->name }}
+                                                        </span>
+                                                    @endforeach
+                                                </div>
+                                            @endif
+
+                                            @if($issue->task)
+                                                <div class="text-xs text-blue-700 mt-1">
+                                                    Linked Task: #{{ $issue->task->id }} — {{ Str::limit($issue->task->title, 40) }}
+                                                </div>
+                                            @endif
+                                        </div>
+
+                                        <span class="text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-700">#{{ $issue->id }}</span>
                                     </div>
 
-                                    @if($issue->user)
-                                    <div class="text-xs text-gray-400 mt-1">Assigned to: {{ $issue->user->name }}</div>
-                                    @else
-                                    <div class="text-xs text-gray-400 mt-1">Unassigned</div>
-                                    @endif
-
-                                    @if($issue->story)
-                                    <div class="text-xs text-indigo-700 mt-1">
-                                        User Story: #{{ $issue->story->id }} — {{ Str::limit($issue->story->title, 60) }}
-                                    </div>
-                                    @else
-                                    <div class="text-xs text-gray-400 mt-1">No User Story</div>
-                                    @endif
-
-                                    @if($issue->task)
-                                    <div class="text-xs text-blue-700 mt-1">
-                                        Linked Task: #{{ $issue->task->id }} — {{ Str::limit($issue->task->title, 40) }}
-                                    </div>
+                                    @if($issue->description)
+                                        <p class="text-xs text-gray-600 mt-2">{{ Str::limit($issue->description, 120) }}</p>
                                     @endif
                                 </div>
-
-                                <span class="text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-700">
-                                    #{{ $issue->id }}
-                                </span>
-                            </div>
-
-                            @if($issue->description)
-                            <p class="text-xs text-gray-600 mt-2">{{ Str::limit($issue->description, 120) }}</p>
-                            @endif
+                            @empty
+                                <p class="text-xs text-gray-400">No issues.</p>
+                            @endforelse
                         </div>
-                        @empty
-                        <p class="text-xs text-gray-400">No issues.</p>
-                        @endforelse
                     </div>
-                </div>
                 @endforeach
             </div>
         </div>
 
         {{-- ============== Completed Stories (All tasks done) ============= --}}
         @if(($doneStories ?? collect())->count())
-        <div class="py-8 space-y-4">
-            <h3 class="text-lg font-semibold text-gray-800">Completed Stories</h3>
+            <div class="py-8 space-y-4">
+                <h3 class="text-lg font-semibold text-gray-800">Completed Stories</h3>
 
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                @foreach($doneStories as $story)
-                <div class="bg-white border rounded-lg p-4">
-                    <div class="flex items-start justify-between">
-                        <div>
-                            <div class="text-sm uppercase tracking-wide text-green-700 font-semibold">Done</div>
-                            <h4 class="text-base font-semibold mt-1">{{ $story->title }}</h4>
-                            <p class="text-sm text-gray-600 mt-1">{{ $story->description }}</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    @foreach($doneStories as $story)
+                        <div class="bg-white border rounded-lg p-4">
+                            <div class="flex items-start justify-between">
+                                <div>
+                                    <div class="text-sm uppercase tracking-wide text-green-700 font-semibold">Done</div>
+                                    <h4 class="text-base font-semibold mt-1">{{ $story->title }}</h4>
+                                    <p class="text-sm text-gray-600 mt-1">{{ $story->description }}</p>
 
-                            @if($story->user)
-                            <p class="text-xs text-gray-400 mt-2">Owner: {{ $story->user->name }}</p>
-                            @endif
+                                    @if($story->user)
+                                        <p class="text-xs text-gray-400 mt-2">Owner: {{ $story->user->name }}</p>
+                                    @endif
 
-                            @if($story->deadline)
-                            <p class="text-xs text-gray-400">
-                                Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}
-                            </p>
+                                    @if($story->deadline)
+                                        <p class="text-xs text-gray-400">
+                                            Deadline: {{ \Carbon\Carbon::parse($story->deadline)->format('M d, Y') }}
+                                        </p>
+                                    @endif
+                                </div>
+
+                                <span class="text-[10px] px-2 py-1 rounded bg-green-100 text-green-800">#{{ $story->id }}</span>
+                            </div>
+
+                            @php($doneTasks = $story->tasks->where('status','done'))
+                            @if($doneTasks->count())
+                                <div class="mt-3">
+                                    <div class="text-xs text-gray-500 mb-1">Tasks ({{ $doneTasks->count() }}):</div>
+                                    <ul class="space-y-1">
+                                        @foreach($doneTasks->take(5) as $t)
+                                            <li class="text-xs text-gray-600">✓ {{ $t->title }}</li>
+                                        @endforeach
+                                        @if($doneTasks->count() > 5)
+                                            <li class="text-xs text-gray-400">… and {{ $doneTasks->count() - 5 }} more</li>
+                                        @endif
+                                    </ul>
+                                </div>
                             @endif
                         </div>
-
-                        <span class="text-[10px] px-2 py-1 rounded bg-green-100 text-green-800">#{{ $story->id }}</span>
-                    </div>
-
-                    {{-- (Optional) preview of done tasks --}}
-                    @php($doneTasks = $story->tasks->where('status','done'))
-                    @if($doneTasks->count())
-                    <div class="mt-3">
-                        <div class="text-xs text-gray-500 mb-1">Tasks ({{ $doneTasks->count() }}):</div>
-                        <ul class="space-y-1">
-                            @foreach($doneTasks->take(5) as $t)
-                            <li class="text-xs text-gray-600">✓ {{ $t->title }}</li>
-                            @endforeach
-                            @if($doneTasks->count() > 5)
-                            <li class="text-xs text-gray-400">… and {{ $doneTasks->count() - 5 }} more</li>
-                            @endif
-                        </ul>
-                    </div>
-                    @endif
+                    @endforeach
                 </div>
-                @endforeach
             </div>
-        </div>
         @endif
     </div>
 
@@ -294,8 +269,7 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
 
     {{-- Create Story Modal --}}
     <div id="storyModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6 relative">
-
+        <div class="bg-white rounded-lg shadow-lg w-full sm:max-w-4xl p-6 relative">
             <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#storyModal">✖</button>
             <h2 class="text-lg font-semibold mb-4">Create Story</h2>
 
@@ -318,7 +292,7 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
                     <select name="user_id" class="w-full border rounded-md p-2">
                         <option value="">-- Select User --</option>
                         @foreach($users as $user)
-                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                            <option value="{{ $user->id }}">{{ $user->name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -358,8 +332,7 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
 
     {{-- Create Task Modal --}}
     <div id="taskModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6 relative">
-
+        <div class="bg-white rounded-lg shadow-lg w-full sm:max-w-4xl p-6 relative">
             <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#taskModal">✖</button>
             <h2 class="text-xl font-semibold mb-4">+ Create New Task</h2>
 
@@ -370,9 +343,9 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
                 <label class="block text-sm font-medium text-gray-700">User Story</label>
                 <select name="user_story_id" class="w-full border rounded-md p-2 mb-4" {{ $allStories->isEmpty() ? 'disabled' : '' }} required>
                     @forelse($allStories as $story)
-                    <option value="{{ $story->id }}">{{ $story->title }}</option>
+                        <option value="{{ $story->id }}">{{ $story->title }}</option>
                     @empty
-                    <option value="">No stories yet</option>
+                        <option value="">No stories yet</option>
                     @endforelse
                 </select>
 
@@ -387,11 +360,7 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
 
                 <label class="block text-sm font-medium text-gray-700">Story Points</label>
                 <select name="story_points" class="w-full border rounded-md p-2 mb-4">
-                    <option>1</option>
-                    <option>2</option>
-                    <option>3</option>
-                    <option>5</option>
-                    <option>8</option>
+                    <option>1</option><option>2</option><option>3</option><option>5</option><option>8</option>
                 </select>
 
                 <label class="block text-sm font-medium text-gray-700">Priority</label>
@@ -406,7 +375,7 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
                     <select name="user_id" class="w-full border rounded-md p-2">
                         <option value="">-- Select User --</option>
                         @foreach($users as $user)
-                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                            <option value="{{ $user->id }}">{{ $user->name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -423,8 +392,8 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
                 <div class="flex justify-end space-x-2">
                     <button type="button" class="closeModal px-4 py-2 bg-gray-200 rounded-md" data-target="#taskModal">Cancel</button>
                     <button type="submit"
-                        class="px-4 py-2 bg-blue-600 text-white rounded-md {{ $allStories->isEmpty() ? 'opacity-50 cursor-not-allowed' : '' }}"
-                        @if($allStories->isEmpty()) disabled title="Create a User Story first" @endif>
+                            class="px-4 py-2 bg-blue-600 text-white rounded-md {{ $allStories->isEmpty() ? 'opacity-50 cursor-not-allowed' : '' }}"
+                            @if($allStories->isEmpty()) disabled title="Create a User Story first" @endif>
                         Create Task
                     </button>
                 </div>
@@ -434,8 +403,7 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
 
     {{-- Create Issue Modal --}}
     <div id="issueModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
-        <div class="bg-white rounded-lg shadow-lg w-full max-w-2xl p-6 relative">
-
+        <div class="bg-white rounded-lg shadow-lg w-full sm:max-w-4xl p-6 relative">
             <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#issueModal">✖</button>
             <h2 class="text-xl font-semibold mb-4">+ Create Issue</h2>
 
@@ -443,13 +411,12 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
                 @csrf
                 <div id="issueErrors" class="text-sm text-red-600 space-y-1 hidden"></div>
 
-                {{-- Assign to User Story --}}
                 <div>
                     <label class="block text-sm font-medium">Assign to User Story</label>
                     <select name="user_story_id" id="issue_story_id" class="w-full border rounded-md p-2" required>
                         <option value="">— Select User Story —</option>
                         @foreach($allStories as $s)
-                        <option value="{{ $s->id }}">{{ $s->title }}</option>
+                            <option value="{{ $s->id }}">{{ $s->title }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -494,11 +461,13 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
                     </div>
 
                     <div>
-                        <label class="block text-sm font-medium">Link to Task (optional)</label>
-                        <select name="task_id" id="issue_task_id" class="w-full border rounded-md p-2">
-                            <option value="">— None —</option>
+                        <label class="block text-sm font-medium">Tags</label>
+                        <select name="tags[]" multiple class="w-full border rounded-md p-2">
+                            @foreach($tags as $tag)
+                                <option value="{{ $tag->id }}">{{ $tag->name }}</option>
+                            @endforeach
                         </select>
-                        <p class="text-xs text-gray-400 mt-1" id="issueNoStoryMsg">Select a User Story to load its tasks.</p>
+                        <p class="text-xs text-gray-400 mt-1">Hold Ctrl (Windows) or Cmd (Mac) to select multiple.</p>
                     </div>
                 </div>
 
@@ -507,7 +476,7 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
                     <select name="user_id" class="w-full border rounded-md p-2">
                         <option value="">— Unassigned —</option>
                         @foreach($users as $u)
-                        <option value="{{ $u->id }}">{{ $u->name }}</option>
+                            <option value="{{ $u->id }}">{{ $u->name }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -520,430 +489,388 @@ $allStories = ($activeStories ?? collect())->concat($doneStories ?? collect());
         </div>
     </div>
 
-{{-- Edit Task Modal (Two-Section Layout) --}}
-<div id="editTaskModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
-  <div class="bg-white rounded-lg shadow-lg w-full sm:max-w-2xl p-0 relative">
-    <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#editTaskModal">✖</button>
+    {{-- Edit Task Modal (Two-Section Layout) --}}
+    <div id="editTaskModal" class="modal fixed inset-0 bg-black/40 items-center justify-center z-50">
+        <div class="bg-white rounded-lg shadow-lg w-full sm:max-w-4xl p-0 relative">
+            <button type="button" class="closeModal absolute top-3 right-3 text-gray-500 hover:text-gray-700" data-target="#editTaskModal">✖</button>
 
-    {{-- Header --}}
-    <div class="px-6 pt-5 pb-3 border-b">
-      <h2 class="text-xl font-semibold">Edit Task</h2>
-      @if ($errors->any())
-        <div class="text-xs text-red-600 mt-1">Please fix the errors below.</div>
-      @endif
+            <div class="px-6 pt-5 pb-3 border-b">
+                <h2 class="text-xl font-semibold">Edit Task</h2>
+                @if ($errors->any())
+                    <div class="text-xs text-red-600 mt-1">Please fix the errors below.</div>
+                @endif
+            </div>
+
+            <div class="p-6">
+                <form id="editTaskForm" method="POST">
+                    @csrf
+                    <input type="hidden" name="_method" value="PUT">
+                    <input type="hidden" id="edit_task_id">
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {{-- Section A: Details --}}
+                        <fieldset class="space-y-4">
+                            <legend class="text-sm font-semibold text-gray-800">Details</legend>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Title</label>
+                                <input type="text" name="title" id="edit_title" class="w-full border rounded-md p-2" required>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Description</label>
+                                <textarea name="description" id="edit_description" class="w-full border rounded-md p-2 min-h-[110px]"></textarea>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Acceptance Criteria</label>
+                                <textarea name="acceptance_criteria" id="edit_criteria" class="w-full border rounded-md p-2 min-h-[110px]"></textarea>
+                            </div>
+                        </fieldset>
+
+                        {{-- Section B: Planning & Assignment --}}
+                        <fieldset class="space-y-4">
+                            <legend class="text-sm font-semibold text-gray-800">Planning & Assignment</legend>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">User Story</label>
+                                <select name="user_story_id" id="edit_user_story_id" class="w-full border rounded-md p-2">
+                                    @foreach(($allStories ?? $stories ?? collect()) as $story)
+                                        <option value="{{ $story->id }}">{{ $story->title }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Story Points</label>
+                                <select name="story_points" id="edit_points" class="w-full border rounded-md p-2">
+                                    <option value="1">1</option><option value="2">2</option>
+                                    <option value="3">3</option><option value="5">5</option><option value="8">8</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Priority</label>
+                                <select name="priority" id="edit_priority" class="w-full border rounded-md p-2">
+                                    <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Assign To</label>
+                                <select name="user_id" id="edit_user_id" class="w-full border rounded-md p-2">
+                                    <option value="">-- Select User --</option>
+                                    @foreach($users as $user)
+                                        <option value="{{ $user->id }}">{{ $user->name }}</option>
+                                    @endforeach
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Status</label>
+                                <select name="status" id="edit_status" class="w-full border rounded-md p-2">
+                                    <option value="new">New</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="blocked">Blocked</option>
+                                    <option value="ready_for_qa">Ready for QA</option>
+                                    <option value="done">Done</option>
+                                </select>
+                            </div>
+                        </fieldset>
+                    </div>
+
+                    <div id="editTaskErrors" class="text-sm text-red-600 space-y-1 hidden mt-4"></div>
+
+                    <div class="flex justify-end gap-2 mt-6">
+                        <button type="button" class="closeModal px-4 py-2 bg-gray-200 rounded-md" data-target="#editTaskModal">Cancel</button>
+                        <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md">Save Changes</button>
+                    </div>
+                </form>
+
+                {{-- Comments --}}
+                <div class="mt-8 border-t pt-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-semibold">Comments</h3>
+                        <span class="text-xs text-gray-500" id="commentsCount">0</span>
+                    </div>
+
+                    <div id="commentsList" class="space-y-3 max-h-60 overflow-y-auto pr-1"></div>
+
+                    <form id="commentForm" class="mt-4 space-y-2">
+                        @csrf
+                        <textarea name="body" class="w-full border rounded-md p-2 text-sm" placeholder="Write a comment..." required></textarea>
+                        <div class="flex justify-end">
+                            <button type="submit" class="px-3 py-1.5 text-sm bg-gray-800 text-white rounded-md">Add Comment</button>
+                        </div>
+                        <div id="commentErrors" class="text-xs text-red-600 hidden"></div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 
-    {{-- Form body --}}
-    <div class="p-6">
-      <form id="editTaskForm" method="POST">
-        @csrf
-        <input type="hidden" name="_method" value="PUT">
-        <input type="hidden" id="edit_task_id">
+    {{-- ===================== Scripts ======================== --}}
+    <script>
+        // CSRF for AJAX
+        $.ajaxSetup({ headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') } });
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {{-- ============== Section A: Details ============== --}}
-          <fieldset class="space-y-4">
-            <legend class="text-sm font-semibold text-gray-800">Details</legend>
+        // Backend-injected values (Blade -> JS)
+        const currentUserId = {{ auth()->id() ?? 'null' }};
+        const TASKS_BASE    = @json(url('/tasks'));
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Title</label>
-              <input type="text" name="title" id="edit_title"
-                     class="w-full border rounded-md p-2" required>
-            </div>
+        // Helpers
+        const openModal  = sel => $(sel).addClass('show');
+        const closeModal = sel => $(sel).removeClass('show');
+        const clearErrors = $box => $box.addClass('hidden').empty();
+        const escapeHtml  = s => $('<div>').text(s ?? '').html();
+        function showErrors($box, errors){
+            $box.empty().removeClass('hidden');
+            if (typeof errors === 'string'){ $box.append(`<div>${errors}</div>`); return; }
+            Object.values(errors || {}).forEach(arr => (arr || []).forEach(msg => $box.append(`<div>${msg}</div>`)));
+        }
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Description</label>
-              <textarea name="description" id="edit_description"
-                        class="w-full border rounded-md p-2 min-h-[110px]"></textarea>
-            </div>
+        // Open/Close modals
+        $('#openStoryBtn, #openStoryBtnEmpty').on('click', () => openModal('#storyModal'));
+        $('#openTaskBtn').on('click', () => openModal('#taskModal'));
+        $(document).on('click', '.closeModal', function(){ closeModal($(this).data('target')); });
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Acceptance Criteria</label>
-              <textarea name="acceptance_criteria" id="edit_criteria"
-                        class="w-full border rounded-md p-2 min-h-[110px]"></textarea>
-            </div>
-          </fieldset>
+        // Issue modal: preload tasks by story
+        $(document).on('click', '.open-issue', function(){
+            const storyId = $(this).data('story');
+            $('#issue_story_id').val(storyId);
 
-          {{-- ============== Section B: Planning & Assignment ============== --}}
-          <fieldset class="space-y-4">
-            <legend class="text-sm font-semibold text-gray-800">Planning & Assignment</legend>
+            $('#issue_task_id').empty().append('<option value="">— None —</option>');
+            $('#issueNoStoryMsg').toggle(!storyId);
 
-            <div>
-              <label class="block text-sm font-medium text-gray-700">User Story</label>
-              <select name="user_story_id" id="edit_user_story_id"
-                      class="w-full border rounded-md p-2">
-                @foreach(($allStories ?? $stories ?? collect()) as $story)
-                  <option value="{{ $story->id }}">{{ $story->title }}</option>
-                @endforeach
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Story Points</label>
-              <select name="story_points" id="edit_points" class="w-full border rounded-md p-2">
-                <option value="1">1</option><option value="2">2</option>
-                <option value="3">3</option><option value="5">5</option><option value="8">8</option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Priority</label>
-              <select name="priority" id="edit_priority" class="w-full border rounded-md p-2">
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Assign To</label>
-              <select name="user_id" id="edit_user_id" class="w-full border rounded-md p-2">
-                <option value="">-- Select User --</option>
-                @foreach($users as $user)
-                  <option value="{{ $user->id }}">{{ $user->name }}</option>
-                @endforeach
-              </select>
-            </div>
-
-            <div>
-              <label class="block text-sm font-medium text-gray-700">Status</label>
-              <select name="status" id="edit_status" class="w-full border rounded-md p-2">
-                <option value="new">New</option>
-                <option value="in_progress">In Progress</option>
-                <option value="blocked">Blocked</option>
-                <option value="ready_for_qa">Ready for QA</option>
-                <option value="done">Done</option>
-              </select>
-            </div>
-          </fieldset>
-        </div>
-
-        {{-- Error box for edit form --}}
-        <div id="editTaskErrors" class="text-sm text-red-600 space-y-1 hidden mt-4"></div>
-
-        {{-- Footer buttons --}}
-        <div class="flex justify-end gap-2 mt-6">
-          <button type="button" class="closeModal px-4 py-2 bg-gray-200 rounded-md"
-                  data-target="#editTaskModal">Cancel</button>
-          <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded-md">Save Changes</button>
-        </div>
-      </form>
-
-      {{-- ============== Section C: Comments (separate form) ============== --}}
-      <div class="mt-8 border-t pt-6">
-        <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-semibold">Comments</h3>
-          <span class="text-xs text-gray-500" id="commentsCount">0</span>
-        </div>
-
-        <div id="commentsList" class="space-y-3 max-h-60 overflow-y-auto pr-1"></div>
-
-        <form id="commentForm" class="mt-4 space-y-2">
-          @csrf
-          <textarea name="body" class="w-full border rounded-md p-2 text-sm"
-                    placeholder="Write a comment..." required></textarea>
-          <div class="flex justify-end">
-            <button type="submit" class="px-3 py-1.5 text-sm bg-gray-800 text-white rounded-md">
-              Add Comment
-            </button>
-          </div>
-          <div id="commentErrors" class="text-xs text-red-600 hidden"></div>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
-
-   {{-- ===================== Scripts ======================== --}}
-<script>
-  // ---- CSRF for AJAX ----
-  $.ajaxSetup({
-    headers: { 'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content') }
-  });
-
-  // ---- Globals (Blade renders actual values) ----
-  const currentUserId = {{ Auth::id() ?? 'null' }};    
-  const TASKS_BASE = @json(url('/tasks')); 
-
-  // ---- Small helpers ----
-  const openModal  = (sel) => $(sel).addClass('show');
-  const closeModal = (sel) => $(sel).removeClass('show');
-  function showErrors($box, errors) {
-    $box.empty().removeClass('hidden');
-    if (typeof errors === 'string') { $box.append(`<div>${errors}</div>`); return; }
-    Object.values(errors || {}).forEach(arr => (arr || []).forEach(msg => $box.append(`<div>${msg}</div>`)));
-  }
-  const clearErrors = ($box) => $box.addClass('hidden').empty();
-  const escapeHtml  = (s) => $('<div>').text(s ?? '').html();
-
-  // ---------------- Modal Open/Close ----------------
-  $('#openStoryBtn, #openStoryBtnEmpty').on('click', () => openModal('#storyModal'));
-  $('#openTaskBtn').on('click', () => openModal('#taskModal'));
-  $(document).on('click', '.closeModal', function () { closeModal($(this).data('target')); });
-
-  // ---------------- Issue Modal: preload tasks for selected story ----------------
-  $(document).on('click', '.open-issue', function () {
-    const storyId = $(this).data('story');
-    $('#issue_story_id').val(storyId);
-
-    $('#issue_task_id').empty().append('<option value="">— None —</option>');
-    $('#issueNoStoryMsg').toggle(!storyId);
-
-    if (storyId) {
-      $.get(`/stories/${storyId}/tasks`, (tasks) => {
-        (tasks || []).forEach(t => {
-          $('#issue_task_id').append(`<option value="${t.id}">${$('<div>').text(t.title).html()}</option>`);
+            if (storyId){
+                $.get(`/stories/${storyId}/tasks`, tasks => {
+                    (tasks || []).forEach(t => {
+                        $('#issue_task_id').append(`<option value="${t.id}">${$('<div>').text(t.title).html()}</option>`);
+                    });
+                    openModal('#issueModal');
+                }).fail(() => openModal('#issueModal'));
+            } else {
+                openModal('#issueModal');
+            }
         });
-        openModal('#issueModal');
-      }).fail(() => openModal('#issueModal'));
-    } else {
-      openModal('#issueModal');
-    }
-  });
 
-  $('#issue_story_id').on('change', function () {
-    const storyId = $(this).val();
-    $('#issue_task_id').empty().append('<option value="">— None —</option>');
-    $('#issueNoStoryMsg').toggle(!storyId);
-    if (!storyId) return;
+        $('#issue_story_id').on('change', function(){
+            const storyId = $(this).val();
+            $('#issue_task_id').empty().append('<option value="">— None —</option>');
+            $('#issueNoStoryMsg').toggle(!storyId);
+            if (!storyId) return;
 
-    $.get(`/stories/${storyId}/tasks`, (tasks) => {
-      (tasks || []).forEach(t => {
-        $('#issue_task_id').append(`<option value="${t.id}">${$('<div>').text(t.title).html()}</option>`);
-      });
-    });
-  });
+            $.get(`/stories/${storyId}/tasks`, tasks => {
+                (tasks || []).forEach(t => {
+                    $('#issue_task_id').append(`<option value="${t.id}">${$('<div>').text(t.title).html()}</option>`);
+                });
+            });
+        });
 
-  // ---------------- Create Story (AJAX) ----------------
-  $('#storyForm').on('submit', function (e) {
-    e.preventDefault();
-    clearErrors($('#storyErrors'));
-    $.post(`{{ route('stories.store') }}`, $(this).serialize())
-      .done(() => { closeModal('#storyModal'); location.reload(); })
-      .fail(xhr => {
-        const res = xhr.responseJSON || {};
-        showErrors($('#storyErrors'), res.errors || res.message || 'Failed to create story.');
-      });
-  });
+        // Create Story
+        $('#storyForm').on('submit', function(e){
+            e.preventDefault();
+            clearErrors($('#storyErrors'));
+            $.post(`{{ route('stories.store') }}`, $(this).serialize())
+                .done(() => { closeModal('#storyModal'); location.reload(); })
+                .fail(xhr => {
+                    const res = xhr.responseJSON || {};
+                    showErrors($('#storyErrors'), res.errors || res.message || 'Failed to create story.');
+                });
+        });
 
-  // ---------------- Create Task (AJAX) ----------------
-  $('#taskForm').on('submit', function (e) {
-    e.preventDefault();
-    clearErrors($('#taskErrors'));
-    $.post(`{{ route('tasks.store') }}`, $(this).serialize())
-      .done(() => { closeModal('#taskModal'); location.reload(); })
-      .fail(xhr => {
-        const res = xhr.responseJSON || {};
-        showErrors($('#taskErrors'), res.errors || res.message || 'Failed to create task.');
-      });
-  });
+        // Create Task
+        $('#taskForm').on('submit', function(e){
+            e.preventDefault();
+            clearErrors($('#taskErrors'));
+            $.post(`{{ route('tasks.store') }}`, $(this).serialize())
+                .done(() => { closeModal('#taskModal'); location.reload(); })
+                .fail(xhr => {
+                    const res = xhr.responseJSON || {};
+                    showErrors($('#taskErrors'), res.errors || res.message || 'Failed to create task.');
+                });
+        });
 
-  // ---------------- Create Issue (AJAX) ----------------
-  $('#issueForm').on('submit', function (e) {
-    e.preventDefault();
-    clearErrors($('#issueErrors'));
-    $.post(`{{ route('issues.store') }}`, $(this).serialize())
-      .done(() => { closeModal('#issueModal'); location.reload(); })
-      .fail(xhr => {
-        const res = xhr.responseJSON || {};
-        showErrors($('#issueErrors'), res.errors || res.message || 'Failed to create issue.');
-      });
-  });
+        // Create Issue
+        $('#issueForm').on('submit', function(e){
+            e.preventDefault();
+            clearErrors($('#issueErrors'));
+            $.post(`{{ route('issues.store') }}`, $(this).serialize())
+                .done(() => { closeModal('#issueModal'); location.reload(); })
+                .fail(xhr => {
+                    const res = xhr.responseJSON || {};
+                    showErrors($('#issueErrors'), res.errors || res.message || 'Failed to create issue.');
+                });
+        });
 
-  // ---------------- Edit Task Modal: fill + open ----------------
-  $(document).on('click', '.open-edit-task', function () {
-    const $el = $(this);
-    $('#edit_task_id').val($el.data('id'));
-    $('#edit_user_story_id').val($el.data('story'));
-    $('#edit_title').val($el.data('title'));
-    $('#edit_description').val($el.data('description'));
-    $('#edit_criteria').val($el.data('criteria'));
-    $('#edit_points').val($el.data('points'));
-    $('#edit_priority').val($el.data('priority'));
-    $('#edit_status').val($el.data('status'));
-    $('#edit_user_id').val($el.data('user') || '');
+        // Edit Task modal open + preload values + load comments
+        $(document).on('click', '.open-edit-task', function(){
+            const $el = $(this);
+            $('#edit_task_id').val($el.data('id'));
+            $('#edit_user_story_id').val($el.data('story'));
+            $('#edit_title').val($el.data('title'));
+            $('#edit_description').val($el.data('description'));
+            $('#edit_criteria').val($el.data('criteria'));
+            $('#edit_points').val($el.data('points'));
+            $('#edit_priority').val($el.data('priority'));
+            $('#edit_status').val($el.data('status'));
+            $('#edit_user_id').val($el.data('user') || '');
+            loadComments($el.data('id'));
+            const $f = $('#commentForm'); if ($f.length) $f[0].reset();
+            openModal('#editTaskModal');
+        });
 
-    // load comments for this task
-    loadComments($el.data('id'));
-    const $f = $('#commentForm'); if ($f.length) $f[0].reset();
+        // Save Task edits
+        $('#editTaskForm').on('submit', function(e){
+            e.preventDefault();
+            clearErrors($('#editTaskErrors'));
+            const id = $('#edit_task_id').val();
+            const payload = $(this).serialize();
 
-    openModal('#editTaskModal');
-  });
+            $.ajax({ url: `/tasks/${id}`, method: 'POST', data: payload }) // _method=PUT included
+                .done(() => { closeModal('#editTaskModal'); location.reload(); })
+                .fail(xhr => {
+                    const res = xhr.responseJSON || {};
+                    showErrors($('#editTaskErrors'), res.errors || res.message || 'Failed to update task.');
+                });
+        });
 
-  // ---------------- Edit Task Save (AJAX PUT via POST + _method) ----------------
-  $('#editTaskForm').on('submit', function (e) {
-    e.preventDefault();
-    clearErrors($('#editTaskErrors'));
+        // Drag & Drop + persist status
+        (function DnD(){
+            let draggedEl = null;
 
-    const id = $('#edit_task_id').val();
-    const payload = $(this).serialize();
+            $(document).on('dragstart', '.task-card', function(e){
+                draggedEl = this;
+                $(this).addClass('dragging');
+                e.originalEvent.dataTransfer.effectAllowed = 'move';
+                e.originalEvent.dataTransfer.setData('text/plain', $(this).data('id'));
+            });
+            $(document).on('dragend', '.task-card', function(){ $(this).removeClass('dragging'); draggedEl = null; });
 
-    $.ajax({
-      url: `/tasks/${id}`,
-      method: 'POST', // using POST with _method=PUT
-      data: payload
-    })
-    .done(() => { closeModal('#editTaskModal'); location.reload(); })
-    .fail(xhr => {
-      const res = xhr.responseJSON || {};
-      showErrors($('#editTaskErrors'), res.errors || res.message || 'Failed to update task.');
-    });
-  });
+            $(document).on('dragover', '.dropzone', function(e){
+                e.preventDefault();
+                e.originalEvent.dataTransfer.dropEffect = 'move';
+                $(this).addClass('drag-over');
+            });
+            $(document).on('dragleave', '.dropzone', function(){ $(this).removeClass('drag-over'); });
 
-  // ---------------- Drag & Drop (HTML5) + Status Persist ----------------
-  (function DnD () {
-    let draggedEl = null;
+            $(document).on('drop', '.dropzone', function(e){
+                e.preventDefault();
+                $(this).removeClass('drag-over');
+                if (!draggedEl) return;
 
-    $(document).on('dragstart', '.task-card', function (e) {
-      draggedEl = this;
-      $(this).addClass('dragging');
-      e.originalEvent.dataTransfer.effectAllowed = 'move';
-      e.originalEvent.dataTransfer.setData('text/plain', $(this).data('id')); // for Firefox
-    });
+                const $card = $(draggedEl);
+                const taskId = $card.data('id');
+                const newStatus = $(this).data('status');
 
-    $(document).on('dragend', '.task-card', function () {
-      $(this).removeClass('dragging');
-      draggedEl = null;
-    });
+                if ($card.data('status') === newStatus) return;
 
-    $(document).on('dragover', '.dropzone', function (e) {
-      e.preventDefault();
-      e.originalEvent.dataTransfer.dropEffect = 'move';
-      $(this).addClass('drag-over');
-    });
+                // Optimistic UI
+                const $targetList = $(this).find('.space-y-3');
+                if ($targetList.length){
+                    $card.appendTo($targetList);
+                    $card.data('status', newStatus);
+                    updateColumnCounts();
+                }
 
-    $(document).on('dragleave', '.dropzone', function () {
-      $(this).removeClass('drag-over');
-    });
+                // Persist
+                $.ajax({
+                    url: `{{ url('/tasks') }}/${taskId}/status`,
+                    method: 'PATCH',
+                    data: { status: newStatus }
+                }).fail(xhr => {
+                    console.error('Failed to update status', xhr?.responseJSON || xhr?.responseText);
+                    location.reload();
+                });
+            });
 
-    $(document).on('drop', '.dropzone', function (e) {
-      e.preventDefault();
-      $(this).removeClass('drag-over');
-      if (!draggedEl) return;
+            function updateColumnCounts(){
+                $('.dropzone').each(function(){
+                    const count = $(this).find('.space-y-3 .task-card').length;
+                    $(this).find('span.text-xs.text-gray-500').first().text(count);
+                });
+            }
+        })();
 
-      const $card    = $(draggedEl);
-      const taskId   = $card.data('id');
-      const newStatus= $(this).data('status');
+        // Comments: render/load/submit/delete
+        function renderComments(list){
+            const $list = $('#commentsList').empty();
+            $('#commentsCount').text(list.length);
+            if (!list.length){ $list.append('<p class="text-xs text-gray-400">No comments yet.</p>'); return; }
 
-      if ($card.data('status') === newStatus) return;
+            list.forEach(c => {
+                const created = new Date(c.created_at).toLocaleString();
+                const canDelete = (c.user_id == currentUserId);
+                $list.append(`
+                    <div class="border rounded-md p-2">
+                        <div class="flex items-center justify-between">
+                            <div class="text-xs font-medium text-gray-800">${escapeHtml(c.user?.name || 'Unknown')}</div>
+                            <div class="text-[10px] text-gray-500">${created}</div>
+                        </div>
+                        <p class="text-sm text-gray-700 mt-1 whitespace-pre-wrap">${escapeHtml(c.body)}</p>
+                        ${canDelete ? `
+                            <div class="flex justify-end mt-1">
+                                <button class="text-[11px] text-red-600 hover:underline comment-delete" data-id="${c.id}">Delete</button>
+                            </div>` : ``}
+                    </div>
+                `);
+            });
+        }
 
-      // optimistic UI
-      const $targetList = $(this).find('.space-y-3');
-      if ($targetList.length) {
-        $card.appendTo($targetList);
-        $card.data('status', newStatus);
-        updateColumnCounts();
-      }
+        function loadComments(taskId){
+            if (!taskId) return;
+            $('#commentsList').html('<div class="text-xs text-gray-400">Loading...</div>');
+            $.get(`${TASKS_BASE}/${taskId}/comments`)
+                .done(list => renderComments(list || []))
+                .fail(xhr => {
+                    console.error('[comments] index error', xhr.status, xhr.responseText);
+                    $('#commentsList').html('<div class="text-xs text-red-600">Failed to load comments.</div>');
+                });
+        }
 
-      // persist
-      $.ajax({
-        url: `{{ url('/tasks') }}/${taskId}/status`,
-        method: 'PATCH',
-        data: { status: newStatus }
-      })
-      .fail(xhr => {
-        console.error('Failed to update status', xhr?.responseJSON || xhr?.responseText);
-        location.reload();
-      });
-    });
+        $(document).on('submit', '#commentForm', function(e){
+            e.preventDefault();
+            const taskId = $('#edit_task_id').val();
+            if (!taskId){ alert('Task ID missing. Close and reopen the task.'); return; }
 
-    function updateColumnCounts () {
-      $('.dropzone').each(function () {
-        const $col = $(this);
-        const count = $col.find('.space-y-3 .task-card').length;
-        $col.find('span.text-xs.text-gray-500').first().text(count);
-      });
-    }
-  })();
+            $('#commentErrors').addClass('hidden').empty();
+            const payload = $(this).serialize();
 
-  // ---------------- Comments: render + load + submit + delete ----------------
-  function renderComments (list) {
-    const $list = $('#commentsList').empty();
-    $('#commentsCount').text(list.length);
+            $.ajax({ url: `${TASKS_BASE}/${taskId}/comments`, method: 'POST', data: payload })
+                .done(() => {
+                    loadComments(taskId);
+                    $('#commentForm textarea[name="body"]').val('');
+                })
+                .fail(xhr => {
+                    console.error('[comments] store error', xhr.status, xhr.responseText);
+                    const $box = $('#commentErrors').removeClass('hidden').empty();
+                    if (xhr.status === 401){ $box.text('Please sign in to add a comment.'); return; }
+                    const res = xhr.responseJSON || {};
+                    const errs = res.errors || res.message || 'Failed to add comment.';
+                    if (typeof errs === 'string') $box.text(errs);
+                    else Object.values(errs || {}).forEach(arr => (arr || []).forEach(m => $box.append(`<div>${m}</div>`)));
+                });
+        });
 
-    if (!list.length) { $list.append('<p class="text-xs text-gray-400">No comments yet.</p>'); return; }
+        $(document).on('click', '.comment-delete', function(){
+            const id = $(this).data('id');
+            const taskId = $('#edit_task_id').val();
+            if (!id || !taskId) return;
 
-    list.forEach(c => {
-      const created   = new Date(c.created_at).toLocaleString();
-      const canDelete = (c.user_id == currentUserId);
-      $list.append(`
-        <div class="border rounded-md p-2">
-          <div class="flex items-center justify-between">
-            <div class="text-xs font-medium text-gray-800">${escapeHtml(c.user?.name || 'Unknown')}</div>
-            <div class="text-[10px] text-gray-500">${created}</div>
-          </div>
-          <p class="text-sm text-gray-700 mt-1 whitespace-pre-wrap">${escapeHtml(c.body)}</p>
-          ${canDelete ? `
-            <div class="flex justify-end mt-1">
-              <button class="text-[11px] text-red-600 hover:underline comment-delete" data-id="${c.id}">Delete</button>
-            </div>` : ``}
-        </div>
-      `);
-    });
-  }
+            $.ajax({ url: `${TASKS_BASE}/${taskId}/comments/${id}`, method: 'DELETE' })
+                .done(() => loadComments(taskId))
+                .fail(xhr => {
+                    console.error('[comments] destroy error', xhr.status, xhr.responseText);
+                    alert('Failed to delete comment.');
+                });
+        });
+    </script>
 
-  function loadComments (taskId) {
-    if (!taskId) return;
-    $('#commentsList').html('<div class="text-xs text-gray-400">Loading...</div>');
-    $.get(`${TASKS_BASE}/${taskId}/comments`)
-      .done(list => renderComments(list || []))
-      .fail(xhr => {
-        console.error('[comments] index error', xhr.status, xhr.responseText);
-        $('#commentsList').html('<div class="text-xs text-red-600">Failed to load comments.</div>');
-      });
-  }
-
-  // delegated submit so it always binds (modal content)
-  $(document).on('submit', '#commentForm', function (e) {
-    e.preventDefault();
-    const taskId = $('#edit_task_id').val();
-    if (!taskId) { alert('Task ID missing. Close and reopen the task.'); return; }
-
-    $('#commentErrors').addClass('hidden').empty();
-    const payload = $(this).serialize();
-
-    $.ajax({
-      url: `${TASKS_BASE}/${taskId}/comments`,
-      method: 'POST',
-      data: payload
-    })
-    .done(() => {
-      loadComments(taskId);
-      $('#commentForm textarea[name="body"]').val('');
-    })
-    .fail(xhr => {
-      console.error('[comments] store error', xhr.status, xhr.responseText);
-      const $box = $('#commentErrors').removeClass('hidden').empty();
-      if (xhr.status === 401) { $box.text('Please sign in to add a comment.'); return; }
-      const res  = xhr.responseJSON || {};
-      const errs = res.errors || res.message || 'Failed to add comment.';
-      if (typeof errs === 'string') $box.text(errs);
-      else Object.values(errs).forEach(arr => (arr || []).forEach(m => $box.append(`<div>${m}</div>`)));
-    });
-  });
-
-  // delegated delete
-  $(document).on('click', '.comment-delete', function () {
-    const id     = $(this).data('id');
-    const taskId = $('#edit_task_id').val();
-    if (!id || !taskId) return;
-
-    $.ajax({ url: `${TASKS_BASE}/${taskId}/comments/${id}`, method: 'DELETE' })
-      .done(() => loadComments(taskId))
-      .fail(xhr => {
-        console.error('[comments] destroy error', xhr.status, xhr.responseText);
-        alert('Failed to delete comment.');
-      });
-  });
-</script>
-
-
-    {{-- === Helper route to add in routes/web.php (authenticated) ===
+    {{-- Helper endpoint suggestion (add to routes/web.php)
     use App\Models\UserStory;
     Route::get('/stories/{story}/tasks', function (UserStory $story) {
         return $story->tasks()->select('id','title')->orderBy('title')->get();
     })->middleware('auth');
     --}}
 </body>
-
 </html>
