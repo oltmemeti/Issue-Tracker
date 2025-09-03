@@ -72,5 +72,25 @@ class TaskController extends Controller
         'story_status'=> optional($task->story)->status,
     ]);
 }
+public function update(Request $request, Task $task)
+{
+    $data = $request->validate([
+        'user_story_id'        => 'required|exists:user_stories,id',
+        'title'                => 'required|string|max:255',
+        'description'          => 'nullable|string',
+        'acceptance_criteria'  => 'nullable|string',
+        'story_points'         => 'nullable|in:1,2,3,5,8',
+        'priority'             => 'required|in:low,medium,high',
+        'status'               => 'required|in:new,in_progress,blocked,ready_for_qa,done',
+        'user_id'              => 'nullable|exists:users,id',
+    ]);
+
+    $task->update($data);
+
+    // keep your auto-recompute if you added it
+    optional($task->story)->recomputeStatusFromTasks();
+
+    return response()->json(['ok' => true]);
+}
 
 }

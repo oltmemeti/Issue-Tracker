@@ -4,6 +4,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\TaskController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\UserStoryController;
+use App\Http\Controllers\TaskCommentController;
 
 Route::post('/stories', [UserStoryController::class, 'store'])->name('stories.store');
 
@@ -17,13 +18,19 @@ Route::get('/dashboard', [TaskController::class, 'index'])
     ->name('dashboard');
 
 Route::middleware('auth')->group(function () {
+    Route::get('/tasks/{task}/comments',                [TaskCommentController::class, 'index'])->name('tasks.comments.index');
+    Route::post('/tasks/{task}/comments',                [TaskCommentController::class, 'store'])->name('tasks.comments.store');
+    Route::delete('/tasks/{task}/comments/{comment}',      [TaskCommentController::class, 'destroy'])->name('tasks.comments.destroy');
+});
+
+Route::middleware('auth')->group(function () {
     Route::patch('/tasks/{task}/status', [TaskController::class, 'updateStatus'])
-    ->name('tasks.updateStatus')
-    ->middleware('auth');
+        ->name('tasks.updateStatus')
+        ->middleware('auth');
     Route::resource('issues', \App\Http\Controllers\IssueController::class);
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

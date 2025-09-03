@@ -42,4 +42,8 @@ class Task extends Model
         static::updated($recompute);
         static::deleted($recompute);
     }
+    public function comments()
+{
+    return $this->hasMany(TaskComment::class);
+}
 }
