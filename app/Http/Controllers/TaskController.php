@@ -67,7 +67,6 @@ class TaskController extends Controller
 
         $task->update(['status' => $data['status']]);
 
-        // If you added this helper on UserStory, keep it
         optional($task->story)->recomputeStatusFromTasks();
 
         return response()->json([

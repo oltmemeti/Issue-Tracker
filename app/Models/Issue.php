@@ -14,7 +14,7 @@ class Issue extends Model
         'status',
         'user_id',
         'user_story_id',
-        'task_id',       
+        'task_id',
     ];
 
     public function user()
@@ -34,7 +34,11 @@ class Issue extends Model
     }
 
     public function tags()
-{
-    return $this->belongsToMany(Tag::class);
-}
+    {
+        return $this->belongsToMany(Tag::class);
+    }
+    public function comments()
+    {
+        return $this->hasMany(IssueComment::class);
+    }
 }

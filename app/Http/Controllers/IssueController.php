@@ -34,14 +34,14 @@ use Illuminate\Http\Request;
                 'tags'          => 'array',
                 'tags.*'        => 'exists:tags,id',
             ]);
-    
-            // Create issue (don’t include 'tags' in mass-assign)
-            $issue = Issue::create(collect($data)->except('tags')->toArray());
-    
-            // Attach tags
-            $issue->tags()->sync($request->input('tags', []));
-    
+        
+            $issue = Issue::create($data);
+            if (!empty($data['tags'])) {
+                $issue->tags()->sync($data['tags']);
+            }
+        
             return back()->with('success', 'Issue reported!');
         }
+        
     }
     
